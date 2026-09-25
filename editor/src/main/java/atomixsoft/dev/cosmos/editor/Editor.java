@@ -83,11 +83,12 @@ public class Editor implements Application {
     private final FreeCameraController m_CamControl;
 
     private final Transform m_CamTrans;
-    private final Matrix4f m_View, m_Model;
+    private final Matrix4f m_View;
 
     private final Scene m_Scene;
-    private final Entity m_TestParent;
+    private final SceneRenderer m_SceneRenderer;
 
+    private final Entity m_TestParent;
     private final Texture2D m_Texture;
 
     private final Material m_DefaultMaterial;
@@ -109,13 +110,15 @@ public class Editor implements Application {
         m_CamControl = new FreeCameraController(m_CamTrans);
 
         m_Scene = new Scene("Test Scene");
+        m_SceneRenderer = new SceneRenderer();
+
         m_Texture = new Texture2D();
 
         m_DefaultMaterial = new Material(m_Shader).setTexture("u_Albedo", m_Texture, 0)
-                .setFloat4("u_Tint", 1.0f, 1.0f, 1.0f, 1.0f);
+                .setFloat4("u_Tint", 1.0f, 1.0f, 1.0f, 1.0f).setRenderState(RenderState.OPAQUE);
 
         m_AccentMaterial = new Material(m_Shader).setTexture("u_Albedo", m_Texture, 0)
-                .setFloat4("u_Tint", 0.65f, 0.85f, 1.0f, 1.0f);
+                .setFloat4("u_Tint", 0.65f, 0.85f, 0.1f, 0.45f).setRenderState(RenderState.TRANSPARENT);
 
         m_TestParent = m_Scene.createEntity("Parent Cube");
         m_TestParent.getTransform().setPosition(0.0f, 0.0f, -2.0f);
@@ -131,6 +134,11 @@ public class Editor implements Application {
         grandchild.setParent(child);
         grandchild.addComponent(new MeshRenderComponent(m_Mesh, m_DefaultMaterial));
 
+        final Entity greatGrandchild = m_Scene.createEntity("Great Grandchild Cube");
+        greatGrandchild.getTransform().setPosition(2.0f, 0.0f, 0.0f).setScale(0.5f);
+        greatGrandchild.setParent(grandchild);
+        greatGrandchild.addComponent(new MeshRenderComponent(m_Mesh, m_AccentMaterial));
+
         m_Scene.createEntity("Empty Entity").getTransform().setPosition(-3.0f, 0.0f, -2.0f);
 
         final Entity sceneCamera = m_Scene.createEntity("Scene Camera");
@@ -142,7 +150,6 @@ public class Editor implements Application {
         m_UseSceneCamera = false;
 
         m_View = new Matrix4f();
-        m_Model = new Matrix4f();
     }
 
     static void main(String[] args) {
@@ -164,8 +171,6 @@ public class Editor implements Application {
 
         m_Mesh.create(CUBE_VERTICES, CUBE_INDICES, layout);
         m_Texture.create(CHECKER_SIZE, CHECKER_SIZE, createCheckerboardPixels(CHECKER_SIZE, CHECKER_SIZE));
-
-        engine.getGraphics().setDepthTestEnabled(true);
     }
 
     @Override
@@ -184,40 +189,19 @@ public class Editor implements Application {
 
         if(!m_UseSceneCamera)
             m_CamControl.update(engine.getInput(), dt);
+
+        final float elapsedTime = (float) engine.getElapsedTime();
+        m_TestParent.getTransform().setRotationEuler(0.0f, elapsedTime * 0.5f, 0.0f);
     }
 
     @Override
     public void render(Engine engine, double alpha) {
         final Camera renderCamera = getRenderCamera();
+
         updateCameraProjection(engine, renderCamera);
         updateViewMatrix();
 
-        final float elapsedTime = (float) engine.getElapsedTime();
-        m_TestParent.getTransform().setRotationEuler(0.0f, elapsedTime * 0.5f, 0.0f);
-
-        for (Entity entity : m_Scene.getEntitiesWithComponent(MeshRenderComponent.class)) {
-            final MeshRenderComponent renderer = entity.getComponent(MeshRenderComponent.class);
-            final Material material = renderer.getMaterial();
-            final Shader shader = material.getShader();
-
-            material.bind();
-            m_Texture.bind(0);
-
-            try {
-                shader.setMatrix4("u_View", m_View);
-                shader.setMatrix4("u_Projection", renderCamera.getProjection());
-
-                if(!entity.getId().equals(m_TestParent.getId()))
-                    entity.getTransform().setRotationEuler(elapsedTime * 0.25f, elapsedTime * 0.5f, 0.0f);
-
-                entity.getWorldMatrix(m_Model);
-                shader.setMatrix4("u_Model", m_Model);
-
-                engine.getGraphics().draw(renderer.getMesh());
-            } finally {
-                material.unbind();
-            }
-        }
+        m_SceneRenderer.render(engine.getGraphics(), m_Scene, renderCamera, m_View);
     }
 
     @Override

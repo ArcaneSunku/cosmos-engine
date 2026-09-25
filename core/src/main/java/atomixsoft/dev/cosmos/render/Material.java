@@ -14,6 +14,8 @@ public final class Material {
     private final Map<String, Vector4f> m_Vector4Uniforms;
     private final Map<String, TextureBinding> m_Textures;
 
+    private RenderState m_RenderState;
+
     public Material(Shader shader) {
         if (shader == null)
             throw new IllegalArgumentException("Material Shader cannot be null!");
@@ -23,6 +25,8 @@ public final class Material {
         m_FloatUniforms = new LinkedHashMap<>();
         m_Vector4Uniforms = new LinkedHashMap<>();
         m_Textures = new LinkedHashMap<>();
+
+        m_RenderState = RenderState.OPAQUE;
     }
 
     public void bind() {
@@ -68,7 +72,6 @@ public final class Material {
 
     public Material setFloat4(String name, Vector4fc value) {
         validateUniformName(name);
-
         if (value == null)
             throw new IllegalArgumentException("Material Vector4 value cannot be null!");
 
@@ -80,7 +83,6 @@ public final class Material {
         validateUniformName(name);
 
         if (texture == null) throw new IllegalArgumentException("Material Texture cannot be null!");
-
         if (slot < 0) throw new IllegalArgumentException("Texture slot cannot be negative!");
 
         for (Map.Entry<String, TextureBinding> entry : m_Textures.entrySet()) {
@@ -91,7 +93,14 @@ public final class Material {
         }
 
         m_Textures.put(name, new TextureBinding(texture, slot));
+        return this;
+    }
 
+    public Material setRenderState(RenderState renderState) {
+        if(renderState == null)
+            throw new IllegalArgumentException("RenderState cannot be null!");
+
+        m_RenderState = renderState;
         return this;
     }
 
@@ -99,8 +108,11 @@ public final class Material {
         return m_Shader;
     }
 
-    private static void validateUniformName(String name) {
+    public RenderState getRenderState() {
+        return m_RenderState;
+    }
 
+    private static void validateUniformName(String name) {
         if (name == null || name.isBlank())
             throw new IllegalArgumentException("Material uniform name cannot be empty!");
     }

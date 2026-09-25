@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
 import static org.lwjgl.opengl.GL13.glActiveTexture;
+import static org.lwjgl.opengl.GL20.GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS;
 import static org.lwjgl.opengl.GL30.glGenerateMipmap;
 
 public final class Texture2D {
@@ -58,8 +59,8 @@ public final class Texture2D {
 
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
             glGenerateMipmap(GL_TEXTURE_2D);
@@ -84,8 +85,13 @@ public final class Texture2D {
 
     public void bind(int slot) {
         validate();
+
         if (slot < 0)
             throw new IllegalArgumentException("Texture slot cannot be negative!");
+
+        final int maxSlots = getMaximumTextureUnits();
+        if(slot >= maxSlots)
+            throw new IllegalArgumentException("Texture slot " + slot + " exceeds the maximum supported slot of " + (maxSlots - 1) + "!");
 
         glActiveTexture(GL_TEXTURE0 + slot);
         glBindTexture(GL_TEXTURE_2D, m_RenderId);
@@ -117,6 +123,10 @@ public final class Texture2D {
     private void validate() {
         if (!m_Initialized)
             throw new IllegalStateException("Texture has not been initialized!");
+    }
+
+    private static int getMaximumTextureUnits() {
+        return glGetInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS);
     }
 
 }

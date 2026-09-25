@@ -20,6 +20,7 @@ public class Graphics {
 
         GL.createCapabilities();
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        glFrontFace(GL_CCW);
 
         m_ViewportWidth = m_ViewportHeight = 0;
         m_Initialized = true;
@@ -27,6 +28,8 @@ public class Graphics {
 
     public void clear() {
         validate();
+
+        glDepthMask(true);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
     public void resize(int width, int height) {
@@ -84,6 +87,40 @@ public class Graphics {
 
         mesh.bind();
         glDrawElements(GL_TRIANGLES, mesh.getIndexCount(), GL_UNSIGNED_INT, 0L);
+    }
+
+    public void applyRenderState(RenderState state) {
+        validate();
+        if(state == null)
+            throw new IllegalArgumentException("Render State cannot be null!");
+
+        if(state.isDepthTestEnabled()) glEnable(GL_DEPTH_TEST);
+        else glDisable(GL_DEPTH_TEST);
+
+        glDepthMask(state.isDepthWriteEnabled());
+
+        switch(state.getCullMode()) {
+            case NONE -> glDisable(GL_CULL_FACE);
+
+            case BACK -> {
+                glEnable(GL_CULL_FACE);
+                glCullFace(GL_BACK);
+            }
+
+            case FRONT -> {
+                glEnable(GL_CULL_FACE);
+                glCullFace(GL_FRONT);
+            }
+        }
+
+        switch(state.getBlendMode()) {
+            case NONE -> glDisable(GL_BLEND);
+
+            case ALPHA -> {
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            }
+        }
     }
 
     public void dispose() {

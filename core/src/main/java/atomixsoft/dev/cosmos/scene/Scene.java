@@ -7,6 +7,7 @@ import java.util.*;
 public final class Scene {
 
     private final Map<EntityId, Entity> m_Entities;
+    private final Collection<Entity> m_EntityView;
 
     private String m_Name;
     private EntityId m_PrimaryCameraId;
@@ -18,6 +19,7 @@ public final class Scene {
         m_PrimaryCameraId = null;
 
         m_Entities = new LinkedHashMap<>();
+        m_EntityView = Collections.unmodifiableCollection(m_Entities.values());
     }
 
     void onComponentRemoved(Entity entity, Class<? extends Component> type) {
@@ -121,7 +123,7 @@ public final class Scene {
     }
 
     public Collection<Entity> getEntities() {
-        return Collections.unmodifiableCollection(m_Entities.values());
+        return m_EntityView;
     }
 
     public List<Entity> getRootEntities() {
