@@ -68,7 +68,7 @@ public final class SceneRenderer {
                 continue;
 
             final Material material = renderer.getMaterial();
-            if(material.getRenderState().isBlendingEnabled()) {
+            if(!material.getRenderState().isBlendingEnabled()) {
                 m_OpaqueSubmissions.add(new RenderSubmission(entity, renderer, 0.0f));
                 continue;
             }
