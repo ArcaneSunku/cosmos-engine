@@ -2,6 +2,7 @@ package atomixsoft.dev.cosmos.asset;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -73,6 +74,24 @@ class AssetManagerTest {
 
         assertEquals(List.of("second", "first"), disposed);
         assertEquals(0, assets.getAssetCount());
+    }
+
+    @Test
+    void loadCachesLoaderResult() {
+        final AssetManager assets = new AssetManager();
+        final AssetKey<String> key = AssetKey.of(String.class, "test/text");
+        final AtomicInteger loads = new AtomicInteger();
+        final AssetSource source = _ -> "hello".getBytes(StandardCharsets.UTF_8);
+        final AssetLoader<String> loader = assetSource -> {
+            loads.incrementAndGet();
+            return assetSource.readString("test.txt");
+        };
+
+        final String first = assets.load(key, source, loader);
+        final String second = assets.load(key, source, loader);
+
+        assertSame(first, second);
+        assertEquals(1, loads.get());
     }
 
     private static final class TestAsset {

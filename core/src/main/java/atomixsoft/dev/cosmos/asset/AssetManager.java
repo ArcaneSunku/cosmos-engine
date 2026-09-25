@@ -36,6 +36,44 @@ public final class AssetManager {
         return asset;
     }
 
+    public <T> T load(AssetKey<T> key, AssetSource source, AssetLoader<T> loader) {
+        validateKey(key);
+        if(source == null)
+            throw new IllegalArgumentException("Asset Source cannot be null!");
+
+        if(loader == null)
+            throw new IllegalArgumentException("Asset Loader cannot be null!");
+
+        final ManagedAsset existing = m_Assets.get(key.getId());
+        if(existing != null)
+            return getExisting(key, existing);
+
+        final T asset;
+
+        try {
+            asset = loader.load(source);
+        } catch (AssetLoadException e) {
+            throw e;
+        } catch (RuntimeException | Error e) {
+            throw new AssetLoadException("Failed to load asset: " + key.getId(), e);
+        }
+
+        if(asset == null)
+            throw new AssetLoadException("Asset Loader returned null for: " + key.getId());
+
+        try {
+            return register(key, asset, loader::unload);
+        } catch (RuntimeException | Error e) {
+            try {
+                loader.unload(asset);
+            } catch (RuntimeException | Error cleanupFailure) {
+                e.addSuppressed(cleanupFailure);
+            }
+
+            throw e;
+        }
+    }
+
     public void unload(AssetKey<?> key) {
         validateKey(key);
 

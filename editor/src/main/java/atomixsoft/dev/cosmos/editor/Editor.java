@@ -3,6 +3,9 @@ package atomixsoft.dev.cosmos.editor;
 import atomixsoft.dev.cosmos.Application;
 import atomixsoft.dev.cosmos.Engine;
 import atomixsoft.dev.cosmos.asset.AssetKey;
+import atomixsoft.dev.cosmos.asset.AssetSource;
+import atomixsoft.dev.cosmos.asset.ClassPathAssetSource;
+import atomixsoft.dev.cosmos.asset.loader.ShaderAssetLoader;
 import atomixsoft.dev.cosmos.camera.Camera;
 import atomixsoft.dev.cosmos.camera.OrthographicCamera;
 import atomixsoft.dev.cosmos.camera.PerspectiveCamera;
@@ -80,9 +83,6 @@ public class Editor implements Application {
     private static final AssetKey<Mesh> CUBE_MESH_ASSET = AssetKey.of(Mesh.class, "editor/meshes/cube");
     private static final AssetKey<Texture2D> CHECKER_TEXTURE_ASSET = AssetKey.of(Texture2D.class, "editor/textures/checker");
 
-    private final Shader m_Shader;
-    private final Mesh m_Mesh;
-
     private final PerspectiveCamera m_POVCamera;
     private final OrthographicCamera m_OrthoCamera;
     private final FreeCameraController m_CamControl;
@@ -93,19 +93,19 @@ public class Editor implements Application {
     private final Scene m_Scene;
     private final SceneRenderer m_SceneRenderer;
 
-    private final Entity m_TestParent;
-    private final Texture2D m_Texture;
+    private Shader m_Shader;
+    private Mesh m_Mesh;
+    private Texture2D m_Texture;
 
-    private final Material m_DefaultMaterial;
-    private final Material m_AccentMaterial;
+    private Material m_DefaultMaterial;
+    private Material m_AccentMaterial;
+
+    private Entity m_TestParent;
 
     private Camera m_ActiveEditorCamera;
     private boolean m_UseSceneCamera;
 
     private Editor() {
-        m_Shader = new Shader();
-        m_Mesh = new Mesh();
-
         m_POVCamera = new PerspectiveCamera((float) Math.toRadians(60.0), 16.0f / 9.0f, 0.1f, 100.0f);
         m_OrthoCamera = new OrthographicCamera(8.0f, 16.0f / 9.0f, -100.0f, 100.0f);
 
@@ -116,14 +116,42 @@ public class Editor implements Application {
 
         m_Scene = new Scene("Test Scene");
         m_SceneRenderer = new SceneRenderer();
+        m_UseSceneCamera = false;
 
-        m_Texture = new Texture2D();
+        m_View = new Matrix4f();
+    }
+
+    @Override
+    public void initialize(Engine engine) {
+        final AssetSource editorAssets = new ClassPathAssetSource(Editor.class);
+        m_Shader = engine.getAssets().load(BASIC_SHADER_ASSET, editorAssets, new ShaderAssetLoader(VERTEX_PATH, FRAGMENT_PATH));
+
+        final BufferLayout layout = new BufferLayout()
+                .addFloat(3)
+                .addFloat(3)
+                .addFloat(2);
+
+        m_Mesh = engine.getAssets().getOrCreate(CUBE_MESH_ASSET, () -> {
+            final Mesh mesh = new Mesh();
+            mesh.create(CUBE_VERTICES, CUBE_INDICES, layout);
+
+            return mesh;
+        }, Mesh::dispose);
+
+        m_Texture = engine.getAssets().getOrCreate(CHECKER_TEXTURE_ASSET, ()-> {
+            final Texture2D texture = new Texture2D();
+            texture.create(CHECKER_SIZE, CHECKER_SIZE, createCheckerboardPixels(CHECKER_SIZE, CHECKER_SIZE));
+
+            return texture;
+        }, Texture2D::dispose);
 
         m_DefaultMaterial = new Material(m_Shader).setTexture("u_Albedo", m_Texture, 0)
                 .setFloat4("u_Tint", 1.0f, 1.0f, 1.0f, 1.0f).setRenderState(RenderState.OPAQUE);
 
         m_AccentMaterial = new Material(m_Shader).setTexture("u_Albedo", m_Texture, 0)
                 .setFloat4("u_Tint", 0.65f, 0.85f, 0.1f, 0.45f).setRenderState(RenderState.TRANSPARENT);
+
+
 
         m_TestParent = m_Scene.createEntity("Parent Cube");
         m_TestParent.getTransform().setPosition(0.0f, 0.0f, -2.0f);
@@ -152,26 +180,6 @@ public class Editor implements Application {
                 new PerspectiveCamera((float) Math.toRadians(60.0), 16.0f / 9.0f, 0.1f, 100.0f)));
 
         m_Scene.setPrimaryCamera(sceneCamera);
-        m_UseSceneCamera = false;
-
-        m_View = new Matrix4f();
-    }
-
-    @Override
-    public void initialize(Engine engine) {
-        engine.getAssets().register(BASIC_SHADER_ASSET, m_Shader, Shader::dispose);
-        engine.getAssets().register(CUBE_MESH_ASSET, m_Mesh, Mesh::dispose);
-        engine.getAssets().register(CHECKER_TEXTURE_ASSET, m_Texture, Texture2D::dispose);
-
-        m_Shader.initialize(ResourceLoader.readString(VERTEX_PATH), ResourceLoader.readString(FRAGMENT_PATH));
-
-        final BufferLayout layout = new BufferLayout()
-                .addFloat(3)
-                .addFloat(3)
-                .addFloat(2);
-
-        m_Mesh.create(CUBE_VERTICES, CUBE_INDICES, layout);
-        m_Texture.create(CHECKER_SIZE, CHECKER_SIZE, createCheckerboardPixels(CHECKER_SIZE, CHECKER_SIZE));
     }
 
     @Override
