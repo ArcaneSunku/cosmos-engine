@@ -1,5 +1,6 @@
 package atomixsoft.dev.cosmos;
 
+import atomixsoft.dev.cosmos.asset.AssetManager;
 import atomixsoft.dev.cosmos.input.Input;
 import atomixsoft.dev.cosmos.render.*;
 import atomixsoft.dev.cosmos.utils.Timer;
@@ -11,6 +12,7 @@ public class Engine {
     private static final double MAX_FRAME_DELTA = 0.25;
 
     private final Application m_Application;
+    private final AssetManager m_Assets;
     private final Graphics m_Graphics;
     private final Input m_Input;
     private final Timer m_Timer;
@@ -29,6 +31,7 @@ public class Engine {
         if(config == null)
             throw new IllegalStateException("Application returned a null Window Config!");
 
+        m_Assets = new AssetManager();
         m_Graphics = new Graphics();
         m_Input = new Input();
         m_Timer = new Timer();
@@ -142,6 +145,7 @@ public class Engine {
     }
 
     private Throwable disposeSystems(Throwable failure) {
+        failure = captureFailure(failure, m_Assets::clear);
         failure = captureFailure(failure, m_Graphics::dispose);
         failure = captureFailure(failure, m_Input::dispose);
         failure = captureFailure(failure, m_Window::close);
@@ -170,6 +174,11 @@ public class Engine {
             throw error;
 
         return new IllegalStateException("Unexpected Engine lifecycle failure!", failure);
+    }
+
+    public AssetManager getAssets() {
+        validate();
+        return m_Assets;
     }
 
     public Graphics getGraphics() {

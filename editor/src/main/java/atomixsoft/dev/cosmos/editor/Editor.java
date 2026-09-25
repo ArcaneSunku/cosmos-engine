@@ -2,6 +2,7 @@ package atomixsoft.dev.cosmos.editor;
 
 import atomixsoft.dev.cosmos.Application;
 import atomixsoft.dev.cosmos.Engine;
+import atomixsoft.dev.cosmos.asset.AssetKey;
 import atomixsoft.dev.cosmos.camera.Camera;
 import atomixsoft.dev.cosmos.camera.OrthographicCamera;
 import atomixsoft.dev.cosmos.camera.PerspectiveCamera;
@@ -74,6 +75,10 @@ public class Editor implements Application {
 
     private static final String VERTEX_PATH = "/shaders/basic.vert";
     private static final String FRAGMENT_PATH = "/shaders/basic.frag";
+
+    private static final AssetKey<Shader> BASIC_SHADER_ASSET = AssetKey.of(Shader.class, "editor/shaders/basic");
+    private static final AssetKey<Mesh> CUBE_MESH_ASSET = AssetKey.of(Mesh.class, "editor/meshes/cube");
+    private static final AssetKey<Texture2D> CHECKER_TEXTURE_ASSET = AssetKey.of(Texture2D.class, "editor/textures/checker");
 
     private final Shader m_Shader;
     private final Mesh m_Mesh;
@@ -152,16 +157,12 @@ public class Editor implements Application {
         m_View = new Matrix4f();
     }
 
-    static void main(String[] args) {
-        final Editor editor = new Editor();
-        final Engine engine = new Engine(editor);
-
-        engine.initialize();
-        engine.run();
-    }
-
     @Override
     public void initialize(Engine engine) {
+        engine.getAssets().register(BASIC_SHADER_ASSET, m_Shader, Shader::dispose);
+        engine.getAssets().register(CUBE_MESH_ASSET, m_Mesh, Mesh::dispose);
+        engine.getAssets().register(CHECKER_TEXTURE_ASSET, m_Texture, Texture2D::dispose);
+
         m_Shader.initialize(ResourceLoader.readString(VERTEX_PATH), ResourceLoader.readString(FRAGMENT_PATH));
 
         final BufferLayout layout = new BufferLayout()
@@ -208,16 +209,6 @@ public class Editor implements Application {
     public void shutdown(Engine engine) {
         m_CamControl.release(engine.getInput());
         m_Scene.clear();
-
-        try {
-            m_Texture.dispose();
-        } finally {
-            try {
-                m_Mesh.dispose();
-            } finally {
-                m_Shader.dispose();
-            }
-        }
     }
 
     @Override
@@ -276,6 +267,14 @@ public class Editor implements Application {
         }
 
         return pixels;
+    }
+
+    static void main(String[] args) {
+        final Editor editor = new Editor();
+        final Engine engine = new Engine(editor);
+
+        engine.initialize();
+        engine.run();
     }
 
 }
