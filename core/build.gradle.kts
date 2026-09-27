@@ -18,11 +18,14 @@ dependencies {
     api(libs.lwjgl.glfw)
     api(libs.lwjgl.opengl)
 
+    implementation(libs.lwjgl.stb)
+
     api(libs.joml)
 
     runtimeOnly("org.lwjgl:lwjgl:$lwjglVersion:$lwjglNatives")
     runtimeOnly("org.lwjgl:lwjgl-glfw:$lwjglVersion:$lwjglNatives")
     runtimeOnly("org.lwjgl:lwjgl-opengl:$lwjglVersion:$lwjglNatives")
+    runtimeOnly("org.lwjgl:lwjgl-stb:$lwjglVersion:$lwjglNatives")
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)

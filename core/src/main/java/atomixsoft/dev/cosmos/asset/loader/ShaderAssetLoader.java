@@ -1,5 +1,6 @@
 package atomixsoft.dev.cosmos.asset.loader;
 
+import atomixsoft.dev.cosmos.asset.AssetLoadContext;
 import atomixsoft.dev.cosmos.asset.AssetLoadException;
 import atomixsoft.dev.cosmos.asset.AssetLoader;
 import atomixsoft.dev.cosmos.asset.AssetSource;
@@ -19,7 +20,8 @@ public final class ShaderAssetLoader implements AssetLoader<Shader> {
     }
 
     @Override
-    public Shader load(AssetSource source) {
+    public Shader load(AssetLoadContext context) {
+        final AssetSource source= context.getSource();
         final String vertexSource = source.readString(m_VertexPath);
         final String fragmentSource = source.readString(m_FragmentPath);
         final Shader shader = new Shader();

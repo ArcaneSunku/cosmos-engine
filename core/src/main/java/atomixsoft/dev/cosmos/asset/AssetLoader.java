@@ -2,7 +2,7 @@ package atomixsoft.dev.cosmos.asset;
 
 public interface AssetLoader<T> {
 
-    T load(AssetSource source);
+    T load(AssetLoadContext context);
     default void unload(T asset) { }
 
 }

@@ -1,0 +1,11 @@
+shader=editor/shaders/basic
+
+render.depthTest=true
+render.depthWrite=true
+render.cull=BACK
+render.blend=NONE
+
+float4.u_Tint=1.0,1.0,1.0,1.0
+
+texture.u_Albedo.asset=editor/textures/checkers
+texture.u_Albedo.slot=0

@@ -84,7 +84,7 @@ class AssetManagerTest {
         final AssetSource source = _ -> "hello".getBytes(StandardCharsets.UTF_8);
         final AssetLoader<String> loader = assetSource -> {
             loads.incrementAndGet();
-            return assetSource.readString("test.txt");
+            return assetSource.getSource().readString("test.txt");
         };
 
         final String first = assets.load(key, source, loader);
@@ -92,6 +92,50 @@ class AssetManagerTest {
 
         assertSame(first, second);
         assertEquals(1, loads.get());
+    }
+
+    @Test
+    void managedAssetKeyCanBeRecovered() {
+        final AssetManager assets = new AssetManager();
+        final TestAsset asset = new TestAsset();
+
+        assets.register(TEST_ASSET, asset, null);
+
+        final AssetKey<TestAsset> key = assets.getKey(TestAsset.class, asset);
+        assertEquals(TEST_ASSET, key);
+    }
+
+    @Test
+    void assetInstanceCannotHaveMultipleKeys() {
+        final AssetManager assets = new AssetManager();
+        final TestAsset asset = new TestAsset();
+        final AssetKey<TestAsset> otherKey = AssetKey.of(TestAsset.class, "test/other");
+
+        assets.register(TEST_ASSET, asset, null);
+
+        assertThrows(IllegalStateException.class, () -> assets.register(otherKey, asset, null));
+    }
+
+    @Test
+    void unloadedAssetNoLongerHasManagedKey() {
+        final AssetManager assets = new AssetManager();
+        final TestAsset asset = new TestAsset();
+
+        assets.register(TEST_ASSET, asset, null);
+        assets.unload(TEST_ASSET);
+
+        assertThrows(IllegalStateException.class, () -> assets.getKey(TestAsset.class, asset));
+    }
+
+    @Test
+    void clearRemovesManagedAssetIdentity() {
+        final AssetManager assets = new AssetManager();
+        final TestAsset asset = new TestAsset();
+
+        assets.register(TEST_ASSET, asset, null);
+        assets.clear();
+
+        assertThrows(IllegalStateException.class, () -> assets.getKey(TestAsset.class, asset));
     }
 
     private static final class TestAsset {

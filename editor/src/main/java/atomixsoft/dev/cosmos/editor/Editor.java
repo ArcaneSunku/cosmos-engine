@@ -2,10 +2,10 @@ package atomixsoft.dev.cosmos.editor;
 
 import atomixsoft.dev.cosmos.Application;
 import atomixsoft.dev.cosmos.Engine;
-import atomixsoft.dev.cosmos.asset.AssetKey;
-import atomixsoft.dev.cosmos.asset.AssetSource;
-import atomixsoft.dev.cosmos.asset.ClassPathAssetSource;
+import atomixsoft.dev.cosmos.asset.*;
+import atomixsoft.dev.cosmos.asset.loader.MaterialAssetLoader;
 import atomixsoft.dev.cosmos.asset.loader.ShaderAssetLoader;
+import atomixsoft.dev.cosmos.asset.loader.TextureAssetLoader;
 import atomixsoft.dev.cosmos.camera.Camera;
 import atomixsoft.dev.cosmos.camera.OrthographicCamera;
 import atomixsoft.dev.cosmos.camera.PerspectiveCamera;
@@ -16,8 +16,8 @@ import atomixsoft.dev.cosmos.scene.Scene;
 import atomixsoft.dev.cosmos.scene.component.CameraComponent;
 import atomixsoft.dev.cosmos.scene.component.MeshRenderComponent;
 import atomixsoft.dev.cosmos.spatial.Transform;
-import atomixsoft.dev.cosmos.utils.ResourceLoader;
 import atomixsoft.dev.cosmos.utils.WindowConfig;
+
 import org.joml.Matrix4f;
 
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_C;
@@ -66,22 +66,37 @@ public class Editor implements Application {
     };
 
     private static final int[] CUBE_INDICES = {
-            0,  1,  2,   2,  3,  0,
-            4,  5,  6,   6,  7,  4,
-            8,  9, 10,  10, 11,  8,
-            12, 13, 14,  14, 15, 12,
-            16, 17, 18,  18, 19, 16,
-            20, 21, 22,  22, 23, 20
-    };
+            0,  1,  2,
+            2,  3,  0,
 
-    private static final int CHECKER_SIZE = 8;
+            4,  5,  6,
+            6,  7,  4,
+
+            8,  9, 10,
+            10, 11,  8,
+
+            12, 13, 14,
+            14, 15, 12,
+
+            16, 17, 18,
+            18, 19, 16,
+
+            20, 21, 22,
+            22, 23, 20
+    };
 
     private static final String VERTEX_PATH = "/shaders/basic.vert";
     private static final String FRAGMENT_PATH = "/shaders/basic.frag";
+    private static final String CHECKER_TEXTURE_PATH = "textures/checkers.png";
+    private static final String DEFAULT_MATERIAL_PATH = "materials/default.material";
+    private static final String ACCENT_MATERIAL_PATH = "materials/accent.material";
 
     private static final AssetKey<Shader> BASIC_SHADER_ASSET = AssetKey.of(Shader.class, "editor/shaders/basic");
     private static final AssetKey<Mesh> CUBE_MESH_ASSET = AssetKey.of(Mesh.class, "editor/meshes/cube");
-    private static final AssetKey<Texture2D> CHECKER_TEXTURE_ASSET = AssetKey.of(Texture2D.class, "editor/textures/checker");
+    private static final AssetKey<Texture2D> CHECKER_TEXTURE_ASSET = AssetKey.of(Texture2D.class, "editor/textures/checkers");
+
+    private static final AssetKey<Material> DEFAULT_MATERIAL_ASSET = AssetKey.of(Material.class, "editor/materials/default");
+    private static final AssetKey<Material> ACCENT_MATERIAL_ASSET = AssetKey.of(Material.class, "editor/materials/accent");
 
     private final PerspectiveCamera m_POVCamera;
     private final OrthographicCamera m_OrthoCamera;
@@ -93,14 +108,9 @@ public class Editor implements Application {
     private final Scene m_Scene;
     private final SceneRenderer m_SceneRenderer;
 
-    private Shader m_Shader;
-    private Mesh m_Mesh;
-    private Texture2D m_Texture;
-
-    private Material m_DefaultMaterial;
-    private Material m_AccentMaterial;
-
     private Entity m_TestParent;
+    private Entity m_TestChild;
+    private Entity m_TestGrandchild;
 
     private Camera m_ActiveEditorCamera;
     private boolean m_UseSceneCamera;
@@ -123,56 +133,48 @@ public class Editor implements Application {
 
     @Override
     public void initialize(Engine engine) {
+        final AssetManager assets = engine.getAssets();
+        final AssetCatalog catalog = assets.getCatalog();
         final AssetSource editorAssets = new ClassPathAssetSource(Editor.class);
-        m_Shader = engine.getAssets().load(BASIC_SHADER_ASSET, editorAssets, new ShaderAssetLoader(VERTEX_PATH, FRAGMENT_PATH));
+
+        catalog.register(BASIC_SHADER_ASSET, editorAssets, new ShaderAssetLoader(VERTEX_PATH, FRAGMENT_PATH));
+        catalog.register(CHECKER_TEXTURE_ASSET, editorAssets, new TextureAssetLoader(CHECKER_TEXTURE_PATH));
+
+        catalog.register(DEFAULT_MATERIAL_ASSET, editorAssets, new MaterialAssetLoader(DEFAULT_MATERIAL_PATH));
+        catalog.register(ACCENT_MATERIAL_ASSET, editorAssets, new MaterialAssetLoader(ACCENT_MATERIAL_PATH));
+
+        assets.load(BASIC_SHADER_ASSET);
+        assets.load(CHECKER_TEXTURE_ASSET);
 
         final BufferLayout layout = new BufferLayout()
                 .addFloat(3)
                 .addFloat(3)
                 .addFloat(2);
 
-        m_Mesh = engine.getAssets().getOrCreate(CUBE_MESH_ASSET, () -> {
+        catalog.registerGenerated(CUBE_MESH_ASSET, assetManager -> {
             final Mesh mesh = new Mesh();
             mesh.create(CUBE_VERTICES, CUBE_INDICES, layout);
-
             return mesh;
         }, Mesh::dispose);
 
-        m_Texture = engine.getAssets().getOrCreate(CHECKER_TEXTURE_ASSET, ()-> {
-            final Texture2D texture = new Texture2D();
-            texture.create(CHECKER_SIZE, CHECKER_SIZE, createCheckerboardPixels(CHECKER_SIZE, CHECKER_SIZE));
+        final Mesh cubeMesh = assets.load(CUBE_MESH_ASSET);
 
-            return texture;
-        }, Texture2D::dispose);
-
-        m_DefaultMaterial = new Material(m_Shader).setTexture("u_Albedo", m_Texture, 0)
-                .setFloat4("u_Tint", 1.0f, 1.0f, 1.0f, 1.0f).setRenderState(RenderState.OPAQUE);
-
-        m_AccentMaterial = new Material(m_Shader).setTexture("u_Albedo", m_Texture, 0)
-                .setFloat4("u_Tint", 0.65f, 0.85f, 0.1f, 0.45f).setRenderState(RenderState.TRANSPARENT);
-
-
+        final Material defaultMaterial = engine.getAssets().load(DEFAULT_MATERIAL_ASSET);
+        final Material accentMaterial = engine.getAssets().load(ACCENT_MATERIAL_ASSET);
 
         m_TestParent = m_Scene.createEntity("Parent Cube");
         m_TestParent.getTransform().setPosition(0.0f, 0.0f, -2.0f);
-        m_TestParent.addComponent(new MeshRenderComponent(m_Mesh, m_DefaultMaterial));
+        m_TestParent.addComponent(new MeshRenderComponent(cubeMesh, defaultMaterial));
 
-        final Entity child = m_Scene.createEntity("Child Cube");
-        child.getTransform().setPosition(2.0f, 0.0f, 0.0f);
-        child.setParent(m_TestParent);
-        child.addComponent(new MeshRenderComponent(m_Mesh, m_AccentMaterial));
+        m_TestChild = m_Scene.createEntity("Child Cube");
+        m_TestChild.getTransform().setPosition(2.0f, 0.0f, 0.0f);
+        m_TestChild.setParent(m_TestParent);
+        m_TestChild.addComponent(new MeshRenderComponent(cubeMesh, accentMaterial));
 
-        final Entity grandchild = m_Scene.createEntity("Grandchild Cube");
-        grandchild.getTransform().setPosition(0.0f, 1.5f, 0.0f).setScale(0.5f);
-        grandchild.setParent(child);
-        grandchild.addComponent(new MeshRenderComponent(m_Mesh, m_DefaultMaterial));
-
-        final Entity greatGrandchild = m_Scene.createEntity("Great Grandchild Cube");
-        greatGrandchild.getTransform().setPosition(2.0f, 0.0f, 0.0f).setScale(0.5f);
-        greatGrandchild.setParent(grandchild);
-        greatGrandchild.addComponent(new MeshRenderComponent(m_Mesh, m_AccentMaterial));
-
-        m_Scene.createEntity("Empty Entity").getTransform().setPosition(-3.0f, 0.0f, -2.0f);
+        m_TestGrandchild = m_Scene.createEntity("Grandchild Cube");
+        m_TestGrandchild.getTransform().setPosition(0.0f, 0.0f, 0.0f).setScale(0.5f);
+        m_TestGrandchild.setParent(m_TestChild);
+        m_TestGrandchild.addComponent(new MeshRenderComponent(cubeMesh, defaultMaterial));
 
         final Entity sceneCamera = m_Scene.createEntity("Scene Camera");
         sceneCamera.getTransform().setPosition(0.0f, 2.0f, 6.0f);
@@ -201,6 +203,8 @@ public class Editor implements Application {
 
         final float elapsedTime = (float) engine.getElapsedTime();
         m_TestParent.getTransform().setRotationEuler(0.0f, elapsedTime * 0.5f, 0.0f);
+        m_TestChild.getTransform().setRotationEuler(0.0f, elapsedTime * 0.5f, elapsedTime * 0.75f);
+        m_TestGrandchild.getTransform().setRotationEuler(elapsedTime * 0.35f, 0.0f, -elapsedTime * 0.75f);
     }
 
     @Override
@@ -253,28 +257,6 @@ public class Editor implements Application {
             return m_ActiveEditorCamera;
 
         return component.getCamera();
-    }
-
-    private static byte[] createCheckerboardPixels(int width, int height) {
-        if (width <= 0 || height <= 0)
-            throw new IllegalArgumentException("Checkerboard dimensions must be greater than zero!");
-
-        final byte[] pixels = new byte[width * height * 4];
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                final boolean light = ((x + y) & 1) == 0;
-                final int value = light ? 255 : 48;
-                final int offset = (y * width + x) * 4;
-
-                pixels[offset] = (byte) value;
-                pixels[offset + 1] = (byte) value;
-                pixels[offset + 2] = (byte) value;
-                pixels[offset + 3] = (byte) 255;
-            }
-        }
-
-        return pixels;
     }
 
     static void main(String[] args) {
