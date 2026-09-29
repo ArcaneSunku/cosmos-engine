@@ -30,7 +30,7 @@ public final class MaterialAssetLoader implements AssetLoader<Material> {
         final Shader shader;
 
         try {
-            shader = assets.get(definition.getShader());
+            shader = assets.load(definition.getShader());
         } catch (IllegalStateException e) {
             throw new AssetLoadException("Material " + m_Path + " requires unloaded Shader Asset: " + definition.getShader().getId(), e);
         }
@@ -49,7 +49,7 @@ public final class MaterialAssetLoader implements AssetLoader<Material> {
 
             final Texture2D texture;
             try {
-                texture = assets.get(reference.asset());
+                texture = assets.load(reference.asset());
             } catch (IllegalStateException e) {
                 throw new AssetLoadException("Material " + m_Path + " requires unloaded Texture Asset: " + reference.asset().getId(), e);
             }

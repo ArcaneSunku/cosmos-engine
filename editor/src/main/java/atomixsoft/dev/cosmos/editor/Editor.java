@@ -10,6 +10,8 @@ import atomixsoft.dev.cosmos.camera.Camera;
 import atomixsoft.dev.cosmos.camera.OrthographicCamera;
 import atomixsoft.dev.cosmos.camera.PerspectiveCamera;
 import atomixsoft.dev.cosmos.editor.camera.FreeCameraController;
+import atomixsoft.dev.cosmos.editor.ui.EditorWorkspace;
+import atomixsoft.dev.cosmos.editor.ui.ImGuiManager;
 import atomixsoft.dev.cosmos.render.*;
 import atomixsoft.dev.cosmos.scene.Entity;
 import atomixsoft.dev.cosmos.scene.Scene;
@@ -105,6 +107,9 @@ public class Editor implements Application {
     private final Transform m_CamTrans;
     private final Matrix4f m_View;
 
+    private final ImGuiManager m_ImGui;
+    private final EditorWorkspace m_Workspace;
+
     private final Scene m_Scene;
     private final SceneRenderer m_SceneRenderer;
 
@@ -124,6 +129,9 @@ public class Editor implements Application {
         m_CamTrans = new Transform().setPosition(0.0f, 0.0f, 4.0f);
         m_CamControl = new FreeCameraController(m_CamTrans);
 
+        m_ImGui = new ImGuiManager();
+        m_Workspace = new EditorWorkspace();
+
         m_Scene = new Scene("Test Scene");
         m_SceneRenderer = new SceneRenderer();
         m_UseSceneCamera = false;
@@ -133,11 +141,9 @@ public class Editor implements Application {
 
     @Override
     public void initialize(Engine engine) {
+        m_ImGui.initialize();
         final AssetManager assets = engine.getAssets();
         registerAssets(assets);
-
-        assets.load(BASIC_SHADER_ASSET);
-        assets.load(CHECKER_TEXTURE_ASSET);
 
         final Mesh cubeMesh = assets.load(CUBE_MESH_ASSET);
 
@@ -168,20 +174,29 @@ public class Editor implements Application {
 
     @Override
     public void update(Engine engine, double dt) {
-        if (!m_UseSceneCamera && engine.getInput().isKeyPressed(GLFW_KEY_P)) {
-            if (m_ActiveEditorCamera == m_POVCamera) m_ActiveEditorCamera = m_OrthoCamera;
-            else m_ActiveEditorCamera = m_POVCamera;
+        m_ImGui.beginFrame();
+
+        final boolean keyboardCaptured = m_ImGui.wantsKeyboard();
+        final boolean mouseCaptured = m_ImGui.wantsMouse();
+
+        if(!keyboardCaptured) {
+            if (!m_UseSceneCamera && engine.getInput().isKeyPressed(GLFW_KEY_P)) {
+                if (m_ActiveEditorCamera == m_POVCamera) m_ActiveEditorCamera = m_OrthoCamera;
+                else m_ActiveEditorCamera = m_POVCamera;
+            }
+
+            if(engine.getInput().isKeyPressed(GLFW_KEY_C)) {
+                m_UseSceneCamera = !m_UseSceneCamera;
+
+                if(m_UseSceneCamera)
+                    m_CamControl.release(engine.getInput());
+            }
         }
 
-        if(engine.getInput().isKeyPressed(GLFW_KEY_C)) {
-            m_UseSceneCamera = !m_UseSceneCamera;
-
-            if(m_UseSceneCamera)
-                m_CamControl.release(engine.getInput());
-        }
-
-        if(!m_UseSceneCamera)
+        if(!m_UseSceneCamera && !mouseCaptured)
             m_CamControl.update(engine.getInput(), dt);
+        else if(mouseCaptured)
+            m_CamControl.release(engine.getInput());
 
         final float elapsedTime = (float) engine.getElapsedTime();
         m_TestParent.getTransform().setRotationEuler(0.0f, elapsedTime * 0.5f, 0.0f);
@@ -197,12 +212,23 @@ public class Editor implements Application {
         updateViewMatrix();
 
         m_SceneRenderer.render(engine.getGraphics(), m_Scene, renderCamera, m_View);
+        m_Workspace.draw(engine, m_Scene);
+
+        m_ImGui.render();
     }
 
     @Override
     public void shutdown(Engine engine) {
-        m_CamControl.release(engine.getInput());
-        m_Scene.clear();
+        try {
+            m_CamControl.release(engine.getInput());
+        } finally {
+            try {
+                m_Workspace.clearSelection();
+                m_ImGui.dispose();
+            } finally {
+                m_Scene.clear();
+            }
+        }
     }
 
     @Override
