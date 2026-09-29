@@ -4,6 +4,13 @@ import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/**
+ * <p>Owns, caches, and resolves runtime Assets.</p>
+ *
+ * <p>Asset loading is synchronous and the AssetManager is not thread-safe.
+ * Loaders that create graphics resources must be invoked on the thread
+ * owning the active graphics context.</p>
+ */
 public final class AssetManager {
 
     private final Map<String, ManagedAsset> m_Assets;
@@ -69,48 +76,19 @@ public final class AssetManager {
         return loadManaged(key, () -> loader.load(new AssetLoadContext(this, source)), loader::unload);
     }
 
-    public void unload(AssetKey<?> key) {
-        validateKey(key);
-
-        final ManagedAsset managed = m_Assets.remove(key.getId());
-        if(managed == null)
-            return;
-
-        m_AssetKeys.remove(managed.asset());
-        disposeAsset(key.getId(), managed);
+    public void unloadAll() {
+        validateCanUnload();
+        unloadAllInternal();
     }
 
     public void clear() {
-        if(m_Assets.isEmpty()) return;
+        validateCanUnload();
 
-        final List<Map.Entry<String, ManagedAsset>> assets = new ArrayList<>(m_Assets.entrySet());
-
-        m_Assets.clear();
-        m_AssetKeys.clear();
-
-        m_Catalog.clear();
-        m_LoadStack.clear();
-
-        Throwable failure = null;
-        for(int i = assets.size() - 1; i >= 0; i--) {
-            final Map.Entry<String, ManagedAsset> entry = assets.get(i);
-            try {
-                disposeAsset(entry.getKey(), entry.getValue());
-            } catch(RuntimeException | Error e) {
-                if(failure == null)
-                    failure = e;
-                else
-                    failure.addSuppressed(e);
-            }
+        try {
+            unloadAllInternal();
+        } finally {
+            m_Catalog.clear();
         }
-
-        if(failure == null)
-            return;
-
-        if(failure instanceof RuntimeException exception)
-            throw exception;
-
-        throw (Error) failure;
     }
 
     public <T> T getOrCreate(AssetKey<T> key, Supplier<? extends T> factory, Consumer<? super T> disposer) {
@@ -132,9 +110,14 @@ public final class AssetManager {
         return getExisting(key, managed);
     }
 
-    public boolean contains(AssetKey<?> key) {
+    public boolean isLoaded(AssetKey<?> key) {
         validateKey(key);
-        return m_Assets.containsKey(key.getId());
+
+        final ManagedAsset managed = m_Assets.get(key.getId());
+        if(managed == null)
+            return false;
+
+        return managed.type().equals(key.getType());
     }
 
     public <T> AssetKey<T> getKey(Class<T> type, T asset) {
@@ -224,6 +207,43 @@ public final class AssetManager {
         } finally {
             endLoad();
         }
+    }
+
+    private void unloadAllInternal() {
+        if(m_Assets.isEmpty())
+            return;
+
+        final List<Map.Entry<String, ManagedAsset>> assets = new ArrayList<>(m_Assets.entrySet());
+
+        m_Assets.clear();
+        m_AssetKeys.clear();
+
+        Throwable failure = null;
+        for(int i = assets.size() - 1; i >= 0; i--) {
+            final Map.Entry<String, ManagedAsset> entry = assets.get(i);
+
+            try {
+                disposeAsset(entry.getKey(), entry.getValue());
+            } catch(RuntimeException | Error e) {
+                if(failure == null)
+                    failure = e;
+                else
+                    failure.addSuppressed(e);
+            }
+        }
+
+        if(failure == null)
+            return;
+
+        if(failure instanceof RuntimeException exception)
+            throw exception;
+
+        throw (Error) failure;
+    }
+
+    private void validateCanUnload() {
+        if(!m_LoadStack.isEmpty())
+            throw new IllegalStateException("Assets cannot be unloaded while an Asset is being loaded!");
     }
 
     private <T> T getExisting(AssetKey<T> key, ManagedAsset managed) {

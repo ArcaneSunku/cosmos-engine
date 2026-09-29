@@ -28,4 +28,27 @@ class AssetKeyTest {
         assertThrows(IllegalArgumentException.class, () -> AssetKey.of(Shader.class, " "));
     }
 
+    @Test
+    void leadingSlashIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> AssetKey.of(TestAsset.class, "/test/asset"));
+    }
+
+    @Test
+    void trailingSlashIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> AssetKey.of(TestAsset.class, "test/asset/"));
+    }
+
+    @Test
+    void emptySegmentIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> AssetKey.of(TestAsset.class, "test//asset"));
+    }
+
+    @Test
+    void parentSegmentIsRejected() {
+        assertThrows(IllegalArgumentException.class, () -> AssetKey.of(TestAsset.class, "test/../asset"));
+    }
+
+    private static final class TestAsset {
+    }
+
 }

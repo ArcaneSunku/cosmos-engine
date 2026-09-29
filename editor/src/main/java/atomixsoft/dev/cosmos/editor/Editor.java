@@ -134,28 +134,10 @@ public class Editor implements Application {
     @Override
     public void initialize(Engine engine) {
         final AssetManager assets = engine.getAssets();
-        final AssetCatalog catalog = assets.getCatalog();
-        final AssetSource editorAssets = new ClassPathAssetSource(Editor.class);
-
-        catalog.register(BASIC_SHADER_ASSET, editorAssets, new ShaderAssetLoader(VERTEX_PATH, FRAGMENT_PATH));
-        catalog.register(CHECKER_TEXTURE_ASSET, editorAssets, new TextureAssetLoader(CHECKER_TEXTURE_PATH));
-
-        catalog.register(DEFAULT_MATERIAL_ASSET, editorAssets, new MaterialAssetLoader(DEFAULT_MATERIAL_PATH));
-        catalog.register(ACCENT_MATERIAL_ASSET, editorAssets, new MaterialAssetLoader(ACCENT_MATERIAL_PATH));
+        registerAssets(assets);
 
         assets.load(BASIC_SHADER_ASSET);
         assets.load(CHECKER_TEXTURE_ASSET);
-
-        final BufferLayout layout = new BufferLayout()
-                .addFloat(3)
-                .addFloat(3)
-                .addFloat(2);
-
-        catalog.registerGenerated(CUBE_MESH_ASSET, assetManager -> {
-            final Mesh mesh = new Mesh();
-            mesh.create(CUBE_VERTICES, CUBE_INDICES, layout);
-            return mesh;
-        }, Mesh::dispose);
 
         final Mesh cubeMesh = assets.load(CUBE_MESH_ASSET);
 
@@ -226,6 +208,25 @@ public class Editor implements Application {
     @Override
     public WindowConfig getWindowConfig() {
         return new WindowConfig("Cosmos Editor", 1280, 720);
+    }
+
+    private void registerAssets(AssetManager assets) {
+        final AssetSource editorAssets = new ClassPathAssetSource(Editor.class);
+        final AssetCatalog catalog = assets.getCatalog();
+
+        catalog.register(BASIC_SHADER_ASSET, editorAssets, new ShaderAssetLoader(VERTEX_PATH, FRAGMENT_PATH));
+        catalog.register(CHECKER_TEXTURE_ASSET, editorAssets, new TextureAssetLoader(CHECKER_TEXTURE_PATH));
+        catalog.register(DEFAULT_MATERIAL_ASSET, editorAssets, new MaterialAssetLoader(DEFAULT_MATERIAL_PATH));
+        catalog.register(ACCENT_MATERIAL_ASSET, editorAssets, new MaterialAssetLoader(ACCENT_MATERIAL_PATH));
+
+        final BufferLayout cubeLayout = new BufferLayout().addFloat(3).addFloat(3).addFloat(2);
+        catalog.registerGenerated(CUBE_MESH_ASSET, manager -> {
+            final Mesh mesh = new Mesh();
+
+            mesh.create(CUBE_VERTICES, CUBE_INDICES, cubeLayout);
+
+            return mesh;
+        }, Mesh::dispose);
     }
 
     private void updateCameraProjection(Engine engine, Camera camera) {

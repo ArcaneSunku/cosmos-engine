@@ -52,7 +52,28 @@ public final class AssetKey<T> {
     }
 
     private static String normalizeId(String id) {
-        return id.trim().replace('\\', '/');
+        final String normalized = id.trim().replace('\\', '/');
+
+        if(normalized.startsWith("/") || normalized.endsWith("/"))
+            throw new IllegalArgumentException("Asset ID cannot begin or end with '/'!");
+
+        final String[] segments = normalized.split("/", -1);
+        final StringBuilder result = new StringBuilder();
+
+        for(String segment : segments) {
+            if(segment.isBlank())
+                throw new IllegalArgumentException("Asset ID cannot contain empty path segments!");
+
+            if(segment.equals(".") || segment.equals(".."))
+                throw new IllegalArgumentException("Asset ID cannot contain '.' or '..' segments!");
+
+            if(!result.isEmpty())
+                result.append('/');
+            
+            result.append(segment);
+        }
+
+        return result.toString();
     }
 
 }

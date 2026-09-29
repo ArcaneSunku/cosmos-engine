@@ -6,10 +6,7 @@ import atomixsoft.dev.cosmos.render.*;
 
 import java.io.IOException;
 import java.io.StringReader;
-import java.util.LinkedHashMap;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 
 public final class MaterialDefinitionParser {
 
@@ -26,6 +23,7 @@ public final class MaterialDefinitionParser {
             throw new AssetLoadException("Failed to parse Material definition!", e);
         }
 
+        validateProperties(properties);
         final String shaderId = require(properties, "shader");
 
         final boolean depthTest = getBoolean(properties, "render.depthTest", true);
@@ -139,6 +137,60 @@ public final class MaterialDefinitionParser {
             return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new AssetLoadException("Invalid value for Material property " + key + ": " + value, e);
+        }
+    }
+
+    private static void validateProperties(Properties properties) {
+        final Map<Integer, String> textureSlots = new LinkedHashMap<>();
+        final Set<String> textureUniforms = new LinkedHashSet<>();
+
+        for (String key : properties.stringPropertyNames()) {
+            if (key.equals("shader") || key.equals("render.depthTest")
+                    || key.equals("render.depthWrite") || key.equals("render.cull") || key.equals("render.blend"))
+                continue;
+
+            if (key.startsWith("float.")) {
+                requireUniformName(key, "float.");
+                continue;
+            }
+
+            if (key.startsWith("float4.")) {
+                requireUniformName(key, "float4.");
+                continue;
+            }
+
+            if (key.startsWith("texture.")) {
+                final String suffix;
+
+                if (key.endsWith(".asset"))
+                    suffix = ".asset";
+                else if (key.endsWith(".slot"))
+                    suffix = ".slot";
+                else
+                    throw new AssetLoadException("Unknown Material property: " + key);
+
+                final String uniform = key.substring("texture.".length(), key.length() - suffix.length());
+                if (uniform.isBlank())
+                    throw new AssetLoadException("Texture uniform name cannot be empty: " + key);
+
+                textureUniforms.add(uniform);
+                continue;
+            }
+
+            throw new AssetLoadException("Unknown Material property: " + key);
+        }
+
+        for (String uniform : textureUniforms) {
+            final String assetKey = "texture." + uniform + ".asset";
+            final String slotKey = "texture." + uniform + ".slot";
+
+            require(properties, assetKey);
+
+            final int slot = parseInteger(require(properties, slotKey), slotKey);
+            final String existingUniform = textureSlots.putIfAbsent(slot, uniform);
+
+            if (existingUniform != null)
+                throw new AssetLoadException("Texture slot " + slot + " is used by both " + existingUniform + " and " + uniform + "!");
         }
     }
 

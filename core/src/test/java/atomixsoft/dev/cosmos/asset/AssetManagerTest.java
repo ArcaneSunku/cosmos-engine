@@ -55,10 +55,10 @@ class AssetManagerTest {
         final AtomicInteger disposals = new AtomicInteger();
 
         assets.register(TEST_ASSET, new TestAsset(), asset -> disposals.incrementAndGet());
-        assets.unload(TEST_ASSET);
+        assets.unloadAll();
 
         assertEquals(1, disposals.get());
-        assertFalse(assets.contains(TEST_ASSET));
+        assertFalse(assets.isLoaded(TEST_ASSET));
     }
 
     @Test
@@ -122,7 +122,7 @@ class AssetManagerTest {
         final TestAsset asset = new TestAsset();
 
         assets.register(TEST_ASSET, asset, null);
-        assets.unload(TEST_ASSET);
+        assets.unloadAll();
 
         assertThrows(IllegalStateException.class, () -> assets.getKey(TestAsset.class, asset));
     }
@@ -136,6 +136,81 @@ class AssetManagerTest {
         assets.clear();
 
         assertThrows(IllegalStateException.class, () -> assets.getKey(TestAsset.class, asset));
+    }
+
+    @Test
+    void successfulDependencyRemainsLoadedWhenParentFails() {
+        final AssetManager assets = new AssetManager();
+        final AssetKey<TestAsset> dependencyKey = AssetKey.of(TestAsset.class, "test/dependency");
+        final AssetKey<TestAsset> parentKey = AssetKey.of(TestAsset.class, "test/parent");
+
+        assets.getCatalog().registerGenerated(dependencyKey, manager -> new TestAsset(), null);
+        assets.getCatalog().registerGenerated(parentKey, manager -> {
+            manager.load(dependencyKey);
+            throw new AssetLoadException("Expected failure");
+        }, null);
+
+        assertThrows(AssetLoadException.class, () -> assets.load(parentKey));
+        assertTrue(assets.isLoaded(dependencyKey));
+        assertFalse(assets.isLoaded(parentKey));
+    }
+
+    @Test
+    void unloadAllKeepsCatalogEntries() {
+        final AssetManager assets = new AssetManager();
+        final AtomicInteger creations = new AtomicInteger();
+
+        assets.getCatalog().registerGenerated(TEST_ASSET, manager -> {
+            creations.incrementAndGet();
+
+            return new TestAsset();
+        }, null);
+
+        final TestAsset first = assets.load(TEST_ASSET);
+        assets.unloadAll();
+
+        assertFalse(assets.isLoaded(TEST_ASSET));
+        assertTrue(assets.getCatalog().contains(TEST_ASSET));
+
+        final TestAsset second = assets.load(TEST_ASSET);
+
+        assertNotSame(first, second);
+        assertEquals(2, creations.get());
+    }
+
+    @Test
+    void clearRemovesLoadedAssetsAndCatalog() {
+        final AssetManager assets = new AssetManager();
+
+        assets.getCatalog().registerGenerated(TEST_ASSET, manager -> new TestAsset(), null);
+        assets.load(TEST_ASSET);
+        assets.clear();
+
+        assertFalse(assets.isLoaded(TEST_ASSET));
+        assertFalse(assets.getCatalog().contains(TEST_ASSET));
+    }
+
+    @Test
+    void unloadAllContinuesAfterDisposalFailure() {
+        final AssetManager assets = new AssetManager();
+        final List<String> disposed = new ArrayList<>();
+
+        final AssetKey<TestAsset> firstKey = AssetKey.of(TestAsset.class, "test/first");
+        final AssetKey<TestAsset> secondKey = AssetKey.of(TestAsset.class, "test/second");
+
+        assets.register(firstKey, new TestAsset(), asset -> {
+            disposed.add("first");
+            throw new IllegalStateException("first failure");
+        });
+
+        assets.register(secondKey, new TestAsset(), asset -> {
+            disposed.add("second");
+            throw new IllegalStateException("second failure");
+        });
+
+        assertThrows(IllegalStateException.class, assets::unloadAll);
+        assertEquals(List.of("second", "first"), disposed);
+        assertEquals(0, assets.getAssetCount());
     }
 
     private static final class TestAsset {

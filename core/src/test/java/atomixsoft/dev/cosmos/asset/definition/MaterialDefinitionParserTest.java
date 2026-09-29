@@ -1,5 +1,6 @@
 package atomixsoft.dev.cosmos.asset.definition;
 
+import atomixsoft.dev.cosmos.asset.AssetLoadException;
 import atomixsoft.dev.cosmos.render.BlendMode;
 import atomixsoft.dev.cosmos.render.CullMode;
 
@@ -44,6 +45,35 @@ class MaterialDefinitionParserTest {
 
         assertEquals("test/textures/albedo", texture.asset().getId());
         assertEquals(2, texture.slot());
+    }
+
+    @Test
+    void unknownPropertyIsRejected() {
+        assertThrows(AssetLoadException.class, () -> MaterialDefinitionParser.parse("""
+                shader=test/shader
+                render.depthWrit=false
+                """));
+    }
+
+    @Test
+    void textureWithoutSlotIsRejected() {
+        assertThrows(AssetLoadException.class, () -> MaterialDefinitionParser.parse("""
+                shader=test/shader
+                texture.u_Albedo.asset=test/albedo
+                """));
+    }
+
+    @Test
+    void duplicateTextureSlotsAreRejected() {
+        assertThrows(AssetLoadException.class, () -> MaterialDefinitionParser.parse("""
+                shader=test/shader
+                
+                texture.u_First.asset=test/first
+                texture.u_First.slot=0
+                
+                texture.u_Second.asset=test/second
+                texture.u_Second.slot=0
+                """));
     }
 
 }
