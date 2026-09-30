@@ -1,32 +1,50 @@
 package atomixsoft.dev.cosmos.editor.ui;
 
 import atomixsoft.dev.cosmos.Engine;
+import atomixsoft.dev.cosmos.render.Framebuffer;
 import atomixsoft.dev.cosmos.scene.Component;
 import atomixsoft.dev.cosmos.scene.Entity;
 import atomixsoft.dev.cosmos.scene.Scene;
 import atomixsoft.dev.cosmos.spatial.Transform;
 
 import imgui.ImGui;
-import imgui.flag.ImGuiDockNodeFlags;
+import imgui.ImGuiViewport;
+import imgui.flag.ImGuiDir;
 import imgui.flag.ImGuiTreeNodeFlags;
 
+import imgui.internal.flag.ImGuiDockNodeFlags;
+import imgui.type.ImInt;
 import org.joml.Quaternionfc;
 import org.joml.Vector3fc;
 
 public final class EditorWorkspace {
 
-    private Entity m_SelectedEntity;
+    private final SceneViewportPanel m_SceneViewport;
+    private final InspectorPanel m_Inspector;
+
+    private boolean m_DefaultLayoutBuilt;
+    private boolean m_ResetLayoutRequested;
 
     private boolean m_ShowHierarchy;
     private boolean m_ShowInspector;
     private boolean m_ShowAssets;
+    private boolean m_ShowScene;
 
     public EditorWorkspace() {
-        m_SelectedEntity = null;
+        m_SceneViewport = new SceneViewportPanel();
+        m_Inspector = new InspectorPanel();
+
+        m_DefaultLayoutBuilt = false;
+        m_ResetLayoutRequested = false;
 
         m_ShowHierarchy = true;
         m_ShowInspector = true;
         m_ShowAssets = true;
+        m_ShowScene = true;
+    }
+
+    public void initialize() {
+        m_SceneViewport.initialize();
     }
 
     public void draw(Engine engine, Scene scene) {
@@ -36,20 +54,80 @@ public final class EditorWorkspace {
         if (scene == null)
             throw new IllegalArgumentException("Scene cannot be null!");
 
-        if (m_SelectedEntity != null && !m_SelectedEntity.isValid())
-            m_SelectedEntity = null;
-
         drawMainMenu(engine);
 
-        ImGui.dockSpaceOverViewport(0, ImGui.getMainViewport(), ImGuiDockNodeFlags.PassthruCentralNode);
+        final ImGuiViewport viewport = ImGui.getMainViewport();
+        final int dockSpaceId = ImGui.dockSpaceOverViewport(0, viewport, 0);
+
+        if(!m_DefaultLayoutBuilt || m_ResetLayoutRequested) {
+            buildDefaultLayout(dockSpaceId, viewport);
+
+            m_DefaultLayoutBuilt = true;
+            m_ResetLayoutRequested = false;
+        }
+
+        if(m_ShowScene) m_SceneViewport.draw();
+        else m_SceneViewport.hide();
 
         if (m_ShowHierarchy) drawHierarchy(scene);
-        if (m_ShowInspector) drawInspector();
+        if (m_ShowInspector) m_Inspector.draw(engine, scene);
         if (m_ShowAssets) drawAssets(engine);
     }
 
+    public void dispose() {
+        clearSelection();
+        m_SceneViewport.dispose();
+    }
+
     public void clearSelection() {
-        m_SelectedEntity = null;
+        m_Inspector.clearSelection();
+    }
+
+    public Framebuffer getSceneFramebuffer() {
+        return m_SceneViewport.getFramebuffer();
+    }
+
+    public boolean isSceneViewportVisible() {
+        return m_SceneViewport.isVisible();
+    }
+
+    public boolean isSceneViewportHovered() {
+        return m_SceneViewport.isHovered();
+    }
+
+    public boolean isSceneViewportFocused() {
+        return m_SceneViewport.isFocused();
+    }
+
+    private void buildDefaultLayout(int dockSpaceId, ImGuiViewport viewport) {
+        imgui.internal.ImGui.dockBuilderRemoveNode(dockSpaceId);
+        imgui.internal.ImGui.dockBuilderAddNode(dockSpaceId, ImGuiDockNodeFlags.DockSpace);
+
+        imgui.internal.ImGui.dockBuilderSetNodePos(dockSpaceId, viewport.getWorkPosX(), viewport.getWorkPosY());
+        imgui.internal.ImGui.dockBuilderSetNodeSize(dockSpaceId, viewport.getWorkSizeX(), viewport.getWorkSizeY());
+
+        // Hierarchy & Inspector
+        final ImInt hierarchyNode = new ImInt();
+        final ImInt remainderAfterHierarchy = new ImInt();
+
+        imgui.internal.ImGui.dockBuilderSplitNode(dockSpaceId, ImGuiDir.Left, 0.20f, hierarchyNode, remainderAfterHierarchy);
+
+        final ImInt inspectorNode = new ImInt();
+        final ImInt centerNode = new ImInt();
+
+        imgui.internal.ImGui.dockBuilderSplitNode(remainderAfterHierarchy.get(), ImGuiDir.Right, 0.25f, inspectorNode, centerNode);
+
+        // Assets & Scene
+        final ImInt assetsNode = new ImInt();
+        final ImInt sceneNode = new ImInt();
+
+        imgui.internal.ImGui.dockBuilderSplitNode(centerNode.get(), ImGuiDir.Down, 0.28f, assetsNode, sceneNode);
+
+        imgui.internal.ImGui.dockBuilderDockWindow("Hierarchy", hierarchyNode.get());
+        imgui.internal.ImGui.dockBuilderDockWindow("Inspector", inspectorNode.get());
+        imgui.internal.ImGui.dockBuilderDockWindow("Assets", assetsNode.get());
+        imgui.internal.ImGui.dockBuilderDockWindow("Scene", sceneNode.get());
+        imgui.internal.ImGui.dockBuilderFinish(dockSpaceId);
     }
 
     private void drawMainMenu(Engine engine) {
@@ -69,6 +147,9 @@ public final class EditorWorkspace {
 
             if (ImGui.beginMenu("View")) {
                 try {
+                    if(ImGui.menuItem("Scene", m_ShowScene))
+                        m_ShowScene = !m_ShowScene;
+
                     if (ImGui.menuItem("Hierarchy", m_ShowHierarchy))
                         m_ShowHierarchy = !m_ShowHierarchy;
 
@@ -77,6 +158,9 @@ public final class EditorWorkspace {
 
                     if (ImGui.menuItem("Assets", m_ShowAssets))
                         m_ShowAssets = !m_ShowAssets;
+
+                    if(ImGui.menuItem("Reset Layout"))
+                        m_ResetLayoutRequested = true;
 
                 } finally {
                     ImGui.endMenu();
@@ -106,7 +190,7 @@ public final class EditorWorkspace {
 
     private void drawEntityNode(Entity entity) {
         int flags = ImGuiTreeNodeFlags.OpenOnArrow | ImGuiTreeNodeFlags.SpanAvailWidth;
-        if (entity == m_SelectedEntity)
+        if (m_Inspector.isSelected(entity))
             flags |= ImGuiTreeNodeFlags.Selected;
 
         final boolean leaf = entity.getChildCount() == 0;
@@ -115,58 +199,13 @@ public final class EditorWorkspace {
 
         final boolean open = ImGui.treeNodeEx(entity.getId().toString(), flags, entity.getName());
 
-        if (ImGui.isItemClicked()) m_SelectedEntity = entity;
+        if (ImGui.isItemClicked()) m_Inspector.select(entity);
 
         if (!leaf && open) {
             for (Entity child : entity.getChildren())
                 drawEntityNode(child);
 
             ImGui.treePop();
-        }
-    }
-
-    private void drawInspector() {
-        final boolean visible = ImGui.begin("Inspector");
-        try {
-            if (!visible)
-                return;
-
-            if (m_SelectedEntity == null) {
-                ImGui.text("No Entity selected.");
-                return;
-            }
-
-            final Entity entity = m_SelectedEntity;
-
-            ImGui.text(entity.getName());
-            ImGui.text("ID: " + entity.getId());
-
-            final Entity parent = entity.getParent();
-
-            ImGui.text("Parent: " + (parent == null ? "None" : parent.getName()));
-            ImGui.separatorText("Transform");
-
-            final Transform transform = entity.getTransform();
-            final Vector3fc position = transform.getPosition();
-            final Quaternionfc rotation = transform.getRotation();
-            final Vector3fc scale = transform.getScale();
-
-            ImGui.text("Position: %.3f, %.3f, %.3f".formatted(position.x(), position.y(), position.z()));
-            ImGui.text("Rotation: %.3f, %.3f, %.3f, %.3f".formatted(rotation.x(), rotation.y(), rotation.z(), rotation.w()));
-            ImGui.text("Scale: %.3f, %.3f, %.3f".formatted(scale.x(), scale.y(), scale.z()));
-
-            ImGui.separatorText("Components");
-
-            if (entity.getComponents().isEmpty()) {
-                ImGui.text("No optional components.");
-                return;
-            }
-
-            for (Component component : entity.getComponents())
-                ImGui.bulletText(component.getClass().getSimpleName());
-
-        } finally {
-            ImGui.end();
         }
     }
 

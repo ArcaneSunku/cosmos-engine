@@ -113,10 +113,6 @@ public class Editor implements Application {
     private final Scene m_Scene;
     private final SceneRenderer m_SceneRenderer;
 
-    private Entity m_TestParent;
-    private Entity m_TestChild;
-    private Entity m_TestGrandchild;
-
     private Camera m_ActiveEditorCamera;
     private boolean m_UseSceneCamera;
 
@@ -142,27 +138,28 @@ public class Editor implements Application {
     @Override
     public void initialize(Engine engine) {
         m_ImGui.initialize();
+        m_Workspace.initialize();
+
         final AssetManager assets = engine.getAssets();
         registerAssets(assets);
 
         final Mesh cubeMesh = assets.load(CUBE_MESH_ASSET);
+        final Material defaultMaterial = assets.load(DEFAULT_MATERIAL_ASSET);
+        final Material accentMaterial = assets.load(ACCENT_MATERIAL_ASSET);
 
-        final Material defaultMaterial = engine.getAssets().load(DEFAULT_MATERIAL_ASSET);
-        final Material accentMaterial = engine.getAssets().load(ACCENT_MATERIAL_ASSET);
+        final Entity testParent = m_Scene.createEntity("Parent Cube");
+        testParent.getTransform().setPosition(0.0f, 0.0f, -2.0f);
+        testParent.addComponent(new MeshRenderComponent(cubeMesh, defaultMaterial));
 
-        m_TestParent = m_Scene.createEntity("Parent Cube");
-        m_TestParent.getTransform().setPosition(0.0f, 0.0f, -2.0f);
-        m_TestParent.addComponent(new MeshRenderComponent(cubeMesh, defaultMaterial));
+        final Entity testChild = m_Scene.createEntity("Child Cube");
+        testChild.getTransform().setPosition(2.0f, 0.0f, 0.0f);
+        testChild.setParent(testParent);
+        testChild.addComponent(new MeshRenderComponent(cubeMesh, accentMaterial));
 
-        m_TestChild = m_Scene.createEntity("Child Cube");
-        m_TestChild.getTransform().setPosition(2.0f, 0.0f, 0.0f);
-        m_TestChild.setParent(m_TestParent);
-        m_TestChild.addComponent(new MeshRenderComponent(cubeMesh, accentMaterial));
-
-        m_TestGrandchild = m_Scene.createEntity("Grandchild Cube");
-        m_TestGrandchild.getTransform().setPosition(0.0f, 0.0f, 0.0f).setScale(0.5f);
-        m_TestGrandchild.setParent(m_TestChild);
-        m_TestGrandchild.addComponent(new MeshRenderComponent(cubeMesh, defaultMaterial));
+        final Entity testGrandchild = m_Scene.createEntity("Grandchild Cube");
+        testGrandchild.getTransform().setPosition(0.0f, 0.0f, 0.0f).setScale(0.5f);
+        testGrandchild.setParent(testChild);
+        testGrandchild.addComponent(new MeshRenderComponent(cubeMesh, defaultMaterial));
 
         final Entity sceneCamera = m_Scene.createEntity("Scene Camera");
         sceneCamera.getTransform().setPosition(0.0f, 2.0f, 6.0f);
@@ -175,11 +172,9 @@ public class Editor implements Application {
     @Override
     public void update(Engine engine, double dt) {
         m_ImGui.beginFrame();
+        m_Workspace.draw(engine, m_Scene);
 
-        final boolean keyboardCaptured = m_ImGui.wantsKeyboard();
-        final boolean mouseCaptured = m_ImGui.wantsMouse();
-
-        if(!keyboardCaptured) {
+        if(m_Workspace.isSceneViewportFocused()) {
             if (!m_UseSceneCamera && engine.getInput().isKeyPressed(GLFW_KEY_P)) {
                 if (m_ActiveEditorCamera == m_POVCamera) m_ActiveEditorCamera = m_OrthoCamera;
                 else m_ActiveEditorCamera = m_POVCamera;
@@ -193,26 +188,16 @@ public class Editor implements Application {
             }
         }
 
-        if(!m_UseSceneCamera && !mouseCaptured)
-            m_CamControl.update(engine.getInput(), dt);
-        else if(mouseCaptured)
-            m_CamControl.release(engine.getInput());
+        final boolean sceneCameraInputActive = !m_UseSceneCamera && (m_Workspace.isSceneViewportHovered() || m_CamControl.isCapturingMouse());
 
-        final float elapsedTime = (float) engine.getElapsedTime();
-        m_TestParent.getTransform().setRotationEuler(0.0f, elapsedTime * 0.5f, 0.0f);
-        m_TestChild.getTransform().setRotationEuler(0.0f, elapsedTime * 0.5f, elapsedTime * 0.75f);
-        m_TestGrandchild.getTransform().setRotationEuler(elapsedTime * 0.35f, 0.0f, -elapsedTime * 0.75f);
+        if(sceneCameraInputActive) m_CamControl.update(engine.getInput(), dt);
+        else m_CamControl.release(engine.getInput());
     }
 
     @Override
     public void render(Engine engine, double alpha) {
-        final Camera renderCamera = getRenderCamera();
-
-        updateCameraProjection(engine, renderCamera);
-        updateViewMatrix();
-
-        m_SceneRenderer.render(engine.getGraphics(), m_Scene, renderCamera, m_View);
-        m_Workspace.draw(engine, m_Scene);
+        if(m_Workspace.isSceneViewportVisible())
+            renderSceneViewport(engine);
 
         m_ImGui.render();
     }
@@ -223,10 +208,13 @@ public class Editor implements Application {
             m_CamControl.release(engine.getInput());
         } finally {
             try {
-                m_Workspace.clearSelection();
-                m_ImGui.dispose();
+                m_Workspace.dispose();
             } finally {
-                m_Scene.clear();
+                try {
+                    m_ImGui.dispose();
+                } finally {
+                    m_Scene.clear();
+                }
             }
         }
     }
@@ -255,12 +243,26 @@ public class Editor implements Application {
         }, Mesh::dispose);
     }
 
-    private void updateCameraProjection(Engine engine, Camera camera) {
-        final int width = engine.getGraphics().getViewportWidth();
-        final int height = engine.getGraphics().getViewportHeight();
+    private void renderSceneViewport(Engine engine) {
+        final Graphics graphics = engine.getGraphics();
+        final Framebuffer framebuffer = m_Workspace.getSceneFramebuffer();
+        final int previousWidth = graphics.getViewportWidth();
+        final int previousHeight = graphics.getViewportHeight();
 
-        if (width == 0 || height == 0) return;
-        camera.resize(width, height);
+        try {
+            framebuffer.bind();
+            graphics.setViewport(framebuffer.getWidth(), framebuffer.getHeight());
+            graphics.clear();
+
+            final Camera renderCamera = getRenderCamera();
+            renderCamera.resize(framebuffer.getWidth(), framebuffer.getHeight());
+            updateViewMatrix();
+
+            m_SceneRenderer.render(engine.getGraphics(), m_Scene, renderCamera, m_View);
+        } finally {
+            Framebuffer.bindDefault();
+            graphics.setViewport(previousWidth, previousHeight);
+        }
     }
 
     private void updateViewMatrix() {

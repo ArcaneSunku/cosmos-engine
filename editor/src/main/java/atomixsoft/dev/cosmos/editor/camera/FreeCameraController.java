@@ -68,6 +68,10 @@ public final class FreeCameraController {
         releaseMouse(input);
     }
 
+    public boolean isCapturingMouse() {
+        return m_CapturingMouse;
+    }
+
     private void updateMouseCapture(Input input) {
         if (input.isMouseButtonPressed(GLFW_MOUSE_BUTTON_RIGHT))
             captureMouse(input);

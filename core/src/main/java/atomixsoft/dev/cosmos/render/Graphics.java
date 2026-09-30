@@ -32,7 +32,12 @@ public class Graphics {
         glDepthMask(true);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
+
     public void resize(int width, int height) {
+        setViewport(width, height);
+    }
+
+    public void setViewport(int width, int height) {
         validate();
         if(width < 0 || height < 0)
             throw new IllegalArgumentException("Viewport dimensions cannot be negative!");
