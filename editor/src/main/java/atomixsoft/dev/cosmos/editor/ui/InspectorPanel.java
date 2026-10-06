@@ -5,6 +5,7 @@ import atomixsoft.dev.cosmos.asset.AssetManager;
 import atomixsoft.dev.cosmos.camera.Camera;
 import atomixsoft.dev.cosmos.camera.OrthographicCamera;
 import atomixsoft.dev.cosmos.camera.PerspectiveCamera;
+import atomixsoft.dev.cosmos.editor.scene.SceneAuthoring;
 import atomixsoft.dev.cosmos.render.Material;
 import atomixsoft.dev.cosmos.render.Mesh;
 import atomixsoft.dev.cosmos.scene.Component;
@@ -19,6 +20,8 @@ import imgui.type.ImString;
 
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
+
+import java.util.List;
 
 public final class InspectorPanel {
 
@@ -59,12 +62,15 @@ public final class InspectorPanel {
         m_SelectedEntity = null;
     }
 
-    public void draw(Engine engine, Scene scene) {
+    public void draw(Engine engine, Scene scene, SceneAuthoring authoring) {
         if (engine == null)
             throw new IllegalArgumentException("Engine cannot be null!");
 
         if (scene == null)
             throw new IllegalArgumentException("Scene cannot be null!");
+
+        if(authoring == null)
+            throw new IllegalArgumentException("Scene Authoring cannot be null!");
 
         if (m_SelectedEntity != null && !m_SelectedEntity.isValid())
             clearSelection();
@@ -83,7 +89,7 @@ public final class InspectorPanel {
 
             ImGui.separatorText("Transform");
             drawTransform(m_SelectedEntity.getTransform());
-            drawComponents(engine, scene, m_SelectedEntity);
+            drawComponents(engine, scene, m_SelectedEntity, authoring);
         } finally {
             ImGui.end();
         }
@@ -168,14 +174,14 @@ public final class InspectorPanel {
             transform.setPosition(0.0f, 0.0f, 0.0f).setRotationEuler(0.0f, 0.0f, 0.0f).setScale(1.0f);
     }
 
-    private void drawComponents(Engine engine, Scene scene, Entity entity) {
-        for (Component component : entity.getComponents()) {
+    private void drawComponents(Engine engine, Scene scene, Entity entity, SceneAuthoring authoring) {
+        for (Component component : List.copyOf(entity.getComponents())) {
             ImGui.pushID(component.getClass().getName());
 
             try {
                 if (component instanceof CameraComponent camera) {
                     ImGui.separatorText("Camera");
-                    drawCamera(scene, entity, camera);
+                    drawCamera(scene, entity, camera, authoring);
 
                     continue;
                 }
@@ -183,6 +189,9 @@ public final class InspectorPanel {
                 if (component instanceof MeshRenderComponent renderer) {
                     ImGui.separatorText("Mesh Renderer");
                     drawMeshRenderer(engine.getAssets(), renderer);
+
+                    if (ImGui.button("Remove Mesh Renderer"))
+                        authoring.removeMeshRenderComponent(scene, entity);
 
                     continue;
                 }
@@ -193,14 +202,57 @@ public final class InspectorPanel {
                 ImGui.popID();
             }
         }
+
+        drawAddComponent(scene, entity, authoring);
     }
 
-    private void drawCamera(Scene scene, Entity entity, CameraComponent component) {
-        final Camera camera = component.getCamera();
+    private void drawAddComponent(Scene scene, Entity entity, SceneAuthoring authoring) {
+        ImGui.separator();
 
-        if (scene.getPrimaryCameraEntity() == entity)
+        if (ImGui.button("Add Component"))
+            ImGui.openPopup("AddComponentPopup");
+
+        if (!ImGui.beginPopup("AddComponentPopup"))
+            return;
+
+        try {
+            boolean hasAvailableComponent = false;
+            if (!entity.hasComponent(CameraComponent.class)) {
+                hasAvailableComponent = true;
+
+                if (ImGui.menuItem("Camera"))
+                    authoring.addCameraComponent(scene, entity);
+            }
+
+            if (!entity.hasComponent(MeshRenderComponent.class)) {
+                hasAvailableComponent = true;
+
+                if (ImGui.menuItem("Mesh Renderer"))
+                    authoring.addMeshRenderComponent(scene, entity);
+            }
+
+            if (!hasAvailableComponent)
+                ImGui.textDisabled("No Components available.");
+        } finally {
+            ImGui.endPopup();
+        }
+    }
+
+    private void drawCamera(Scene scene, Entity entity, CameraComponent component, SceneAuthoring authoring) {
+        final boolean primary = scene.getPrimaryCameraEntity() == entity;
+
+        if (primary) {
             ImGui.textDisabled("Primary Camera");
+            if (ImGui.button("Clear Primary Camera"))
+                authoring.clearPrimaryCamera(scene);
+        } else {
+            if (ImGui.button("Set As Primary Camera"))
+                authoring.setPrimaryCamera(scene, entity);
+        }
 
+        ImGui.separator();
+
+        final Camera camera = component.getCamera();
         if (camera instanceof PerspectiveCamera perspective) {
             drawPerspectiveCamera(perspective);
             return;
@@ -212,6 +264,10 @@ public final class InspectorPanel {
         }
 
         ImGui.textDisabled("Projection: " + camera.getClass().getSimpleName());
+        ImGui.separator();
+
+        if (ImGui.button("Remove Camera"))
+            authoring.removeCameraComponent(scene, entity);
     }
 
     private void drawPerspectiveCamera(PerspectiveCamera camera) {

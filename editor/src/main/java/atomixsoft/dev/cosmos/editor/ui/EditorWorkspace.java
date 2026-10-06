@@ -1,11 +1,11 @@
 package atomixsoft.dev.cosmos.editor.ui;
 
 import atomixsoft.dev.cosmos.Engine;
+import atomixsoft.dev.cosmos.asset.AssetManager;
+import atomixsoft.dev.cosmos.editor.scene.SceneAuthoring;
 import atomixsoft.dev.cosmos.render.Framebuffer;
-import atomixsoft.dev.cosmos.scene.Component;
 import atomixsoft.dev.cosmos.scene.Entity;
 import atomixsoft.dev.cosmos.scene.Scene;
-import atomixsoft.dev.cosmos.spatial.Transform;
 
 import imgui.ImGui;
 import imgui.ImGuiViewport;
@@ -14,13 +14,13 @@ import imgui.flag.ImGuiTreeNodeFlags;
 
 import imgui.internal.flag.ImGuiDockNodeFlags;
 import imgui.type.ImInt;
-import org.joml.Quaternionfc;
-import org.joml.Vector3fc;
 
 public final class EditorWorkspace {
 
     private final SceneViewportPanel m_SceneViewport;
     private final InspectorPanel m_Inspector;
+
+    private SceneAuthoring m_Authoring;
 
     private boolean m_DefaultLayoutBuilt;
     private boolean m_ResetLayoutRequested;
@@ -43,18 +43,25 @@ public final class EditorWorkspace {
         m_ShowScene = true;
     }
 
-    public void initialize() {
+    public void initialize(AssetManager assets) {
+        if(assets == null)
+            throw new IllegalArgumentException("Asset Manager cannot be null!");
+
+        m_Authoring = new SceneAuthoring(assets);
         m_SceneViewport.initialize();
     }
 
     public void draw(Engine engine, Scene scene) {
+        if(m_Authoring == null)
+            throw new IllegalStateException("Editor Workspace has not been initialized!");
+
         if (engine == null)
             throw new IllegalArgumentException("Engine cannot be null!");
 
         if (scene == null)
             throw new IllegalArgumentException("Scene cannot be null!");
 
-        drawMainMenu(engine);
+        drawMainMenu(engine, scene);
 
         final ImGuiViewport viewport = ImGui.getMainViewport();
         final int dockSpaceId = ImGui.dockSpaceOverViewport(0, viewport, 0);
@@ -70,13 +77,14 @@ public final class EditorWorkspace {
         else m_SceneViewport.hide();
 
         if (m_ShowHierarchy) drawHierarchy(scene);
-        if (m_ShowInspector) m_Inspector.draw(engine, scene);
+        if (m_ShowInspector) m_Inspector.draw(engine, scene, m_Authoring);
         if (m_ShowAssets) drawAssets(engine);
     }
 
     public void dispose() {
         clearSelection();
         m_SceneViewport.dispose();
+        m_Authoring = null;
     }
 
     public void clearSelection() {
@@ -130,7 +138,7 @@ public final class EditorWorkspace {
         imgui.internal.ImGui.dockBuilderFinish(dockSpaceId);
     }
 
-    private void drawMainMenu(Engine engine) {
+    private void drawMainMenu(Engine engine, Scene scene) {
         if (!ImGui.beginMainMenuBar())
             return;
 
@@ -139,6 +147,31 @@ public final class EditorWorkspace {
                 try {
                     if (ImGui.menuItem("Exit")) {
                         engine.stop();
+                    }
+                } finally {
+                    ImGui.endMenu();
+                }
+            }
+
+            if(ImGui.beginMenu("Entity")) {
+                try {
+                    if(ImGui.menuItem("Create Empty"))
+                        m_Inspector.select(m_Authoring.createEmpty(scene));
+
+                    if(ImGui.menuItem("Create Cube"))
+                        m_Inspector.select(m_Authoring.createCube(scene));
+
+                    if(ImGui.menuItem("Create Camera"))
+                        m_Inspector.select(m_Authoring.createCamera(scene));
+
+                    final Entity selected = m_Inspector.getSelectedEntity();
+                    if(selected != null) {
+                        ImGui.separator();
+
+                        if(ImGui.menuItem("Delete Selected")) {
+                            m_Authoring.deleteEntity(scene, selected);
+                            m_Inspector.clearSelection();
+                        }
                     }
                 } finally {
                     ImGui.endMenu();
@@ -176,6 +209,11 @@ public final class EditorWorkspace {
         try {
             if (!visible)
                 return;
+
+            if(scene.getEntityCount() == 0) {
+                ImGui.textDisabled("Scene is Empty.");
+                return;
+            }
 
             ImGui.text(scene.getName());
             ImGui.separator();

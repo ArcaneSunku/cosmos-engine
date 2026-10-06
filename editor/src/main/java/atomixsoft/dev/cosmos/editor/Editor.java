@@ -25,6 +25,8 @@ import org.joml.Matrix4f;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_C;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_P;
 
+import static atomixsoft.dev.cosmos.editor.asset.EditorAssetKeys.*;
+
 public class Editor implements Application {
 
     private static final float[] CUBE_VERTICES = {
@@ -93,13 +95,6 @@ public class Editor implements Application {
     private static final String DEFAULT_MATERIAL_PATH = "materials/default.material";
     private static final String ACCENT_MATERIAL_PATH = "materials/accent.material";
 
-    private static final AssetKey<Shader> BASIC_SHADER_ASSET = AssetKey.of(Shader.class, "editor/shaders/basic");
-    private static final AssetKey<Mesh> CUBE_MESH_ASSET = AssetKey.of(Mesh.class, "editor/meshes/cube");
-    private static final AssetKey<Texture2D> CHECKER_TEXTURE_ASSET = AssetKey.of(Texture2D.class, "editor/textures/checkers");
-
-    private static final AssetKey<Material> DEFAULT_MATERIAL_ASSET = AssetKey.of(Material.class, "editor/materials/default");
-    private static final AssetKey<Material> ACCENT_MATERIAL_ASSET = AssetKey.of(Material.class, "editor/materials/accent");
-
     private final PerspectiveCamera m_POVCamera;
     private final OrthographicCamera m_OrthoCamera;
     private final FreeCameraController m_CamControl;
@@ -128,7 +123,7 @@ public class Editor implements Application {
         m_ImGui = new ImGuiManager();
         m_Workspace = new EditorWorkspace();
 
-        m_Scene = new Scene("Test Scene");
+        m_Scene = new Scene("Untitled Scene");
         m_SceneRenderer = new SceneRenderer();
         m_UseSceneCamera = false;
 
@@ -138,41 +133,20 @@ public class Editor implements Application {
     @Override
     public void initialize(Engine engine) {
         m_ImGui.initialize();
-        m_Workspace.initialize();
 
         final AssetManager assets = engine.getAssets();
         registerAssets(assets);
 
-        final Mesh cubeMesh = assets.load(CUBE_MESH_ASSET);
-        final Material defaultMaterial = assets.load(DEFAULT_MATERIAL_ASSET);
-        final Material accentMaterial = assets.load(ACCENT_MATERIAL_ASSET);
-
-        final Entity testParent = m_Scene.createEntity("Parent Cube");
-        testParent.getTransform().setPosition(0.0f, 0.0f, -2.0f);
-        testParent.addComponent(new MeshRenderComponent(cubeMesh, defaultMaterial));
-
-        final Entity testChild = m_Scene.createEntity("Child Cube");
-        testChild.getTransform().setPosition(2.0f, 0.0f, 0.0f);
-        testChild.setParent(testParent);
-        testChild.addComponent(new MeshRenderComponent(cubeMesh, accentMaterial));
-
-        final Entity testGrandchild = m_Scene.createEntity("Grandchild Cube");
-        testGrandchild.getTransform().setPosition(0.0f, 0.0f, 0.0f).setScale(0.5f);
-        testGrandchild.setParent(testChild);
-        testGrandchild.addComponent(new MeshRenderComponent(cubeMesh, defaultMaterial));
-
-        final Entity sceneCamera = m_Scene.createEntity("Scene Camera");
-        sceneCamera.getTransform().setPosition(0.0f, 2.0f, 6.0f);
-        sceneCamera.addComponent(new CameraComponent(
-                new PerspectiveCamera((float) Math.toRadians(60.0), 16.0f / 9.0f, 0.1f, 100.0f)));
-
-        m_Scene.setPrimaryCamera(sceneCamera);
+        m_Workspace.initialize(engine.getAssets());
     }
 
     @Override
     public void update(Engine engine, double dt) {
         m_ImGui.beginFrame();
         m_Workspace.draw(engine, m_Scene);
+
+        if(m_UseSceneCamera && !m_Scene.hasPrimaryCamera())
+            m_UseSceneCamera = false;
 
         if(m_Workspace.isSceneViewportFocused()) {
             if (!m_UseSceneCamera && engine.getInput().isKeyPressed(GLFW_KEY_P)) {
@@ -181,10 +155,12 @@ public class Editor implements Application {
             }
 
             if(engine.getInput().isKeyPressed(GLFW_KEY_C)) {
-                m_UseSceneCamera = !m_UseSceneCamera;
-
-                if(m_UseSceneCamera)
+                if(m_UseSceneCamera) {
+                    m_UseSceneCamera = false;
+                } else if(m_Scene.hasPrimaryCamera()) {
+                    m_UseSceneCamera = true;
                     m_CamControl.release(engine.getInput());
+                }
             }
         }
 
@@ -228,13 +204,13 @@ public class Editor implements Application {
         final AssetSource editorAssets = new ClassPathAssetSource(Editor.class);
         final AssetCatalog catalog = assets.getCatalog();
 
-        catalog.register(BASIC_SHADER_ASSET, editorAssets, new ShaderAssetLoader(VERTEX_PATH, FRAGMENT_PATH));
-        catalog.register(CHECKER_TEXTURE_ASSET, editorAssets, new TextureAssetLoader(CHECKER_TEXTURE_PATH));
-        catalog.register(DEFAULT_MATERIAL_ASSET, editorAssets, new MaterialAssetLoader(DEFAULT_MATERIAL_PATH));
-        catalog.register(ACCENT_MATERIAL_ASSET, editorAssets, new MaterialAssetLoader(ACCENT_MATERIAL_PATH));
+        catalog.register(BASIC_SHADER, editorAssets, new ShaderAssetLoader(VERTEX_PATH, FRAGMENT_PATH));
+        catalog.register(CHECKER_TEXTURE, editorAssets, new TextureAssetLoader(CHECKER_TEXTURE_PATH));
+        catalog.register(DEFAULT_MATERIAL, editorAssets, new MaterialAssetLoader(DEFAULT_MATERIAL_PATH));
+        catalog.register(ACCENT_MATERIAL, editorAssets, new MaterialAssetLoader(ACCENT_MATERIAL_PATH));
 
         final BufferLayout cubeLayout = new BufferLayout().addFloat(3).addFloat(3).addFloat(2);
-        catalog.registerGenerated(CUBE_MESH_ASSET, manager -> {
+        catalog.registerGenerated(CUBE_MESH, manager -> {
             final Mesh mesh = new Mesh();
 
             mesh.create(CUBE_VERTICES, CUBE_INDICES, cubeLayout);
