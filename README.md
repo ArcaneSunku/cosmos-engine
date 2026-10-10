@@ -1,6 +1,6 @@
 # Cosmos Engine
 
-Cosmos is a game engine written in Java with LWJGL. It is still early in development, but the core engine, renderer, scene model, asset system, and the first parts of the editor are already in place.
+Cosmos is a game engine written in Java with LWJGL. It is still early in development, but the core engine, renderer, scene model, asset system, and a functional editor are already in place.
 
 The project is split so that the engine itself stays separate from the tools built around it. The editor and runtime both depend on `core`, while `core` does not depend on either of them.
 
@@ -13,16 +13,23 @@ Cosmos currently has:
 - Keyboard and mouse input, including cursor capture and raw mouse motion
 - Mesh, shader, texture, material, and render-state support
 - Perspective and orthographic cameras
-- Entity/component scenes with parent-child transforms
+- Entity/component scenes with parent-child transforms and explicit hierarchy ordering
 - A scene renderer with opaque and transparent rendering
 - Offscreen framebuffers for editor viewports
 - An asset system with typed asset keys, caching, catalog entries, dependency loading, and file/classpath sources
 - Shader, texture, and material asset loading
-- An ImGui-based editor with docking
-- Hierarchy, Inspector, Assets, and Scene panels
+- An ImGui-based editor with docking and persistent workspace settings
+- Hierarchy, Inspector, Assets, Scene, and Game panels
 - A resizable Scene viewport with editor-camera navigation
-- Entity name and transform editing in the Inspector
-- Camera component editing
+- Scene selection through viewport picking and the Hierarchy
+- Translate, rotate, and scale gizmos with local/world modes and snapping
+- Editor-only scene overlays including the grid, camera visualization, frustums, and selection feedback
+- Entity creation, deletion, duplication, renaming, and component editing
+- Perspective and orthographic Camera component editing
+- Parent-child authoring through Hierarchy drag-and-drop
+- Root and sibling reordering in the Hierarchy
+- World-space-preserving reparenting
+- Undo and redo for transforms, entity structure, hierarchy changes, components, camera settings, and other editor operations
 
 A lot of this is still subject to change. The public API is not stable yet.
 
@@ -94,7 +101,9 @@ Or run the full test suite with:
 
 ## Direction
 
-The current focus is on making the editor useful enough to build scenes without relying on hard-coded test setup. The next major pieces are scene authoring controls, a Game view, editor workspace persistence, project/scene serialization, and the standalone runtime workflow.
+The next major focus is project and scene serialization so scenes created in the editor can be saved, reopened, and used by the standalone runtime.
+
+After that, the editor and runtime can start building around persistent projects rather than temporary in-memory scenes. Later work will include play mode, a more complete runtime workflow, and broader scene/component tooling.
 
 Longer term, Cosmos is intended to support both 3D and 2D projects while keeping the same scene/entity/component foundation underneath both.
 
