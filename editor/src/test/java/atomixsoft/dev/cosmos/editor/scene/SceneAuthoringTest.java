@@ -9,6 +9,7 @@ import atomixsoft.dev.cosmos.scene.Scene;
 import atomixsoft.dev.cosmos.scene.component.CameraComponent;
 import atomixsoft.dev.cosmos.scene.component.MeshRenderComponent;
 
+import org.joml.Matrix4f;
 import org.junit.jupiter.api.Test;
 
 import static atomixsoft.dev.cosmos.editor.asset.EditorAssetKeys.CUBE_MESH;
@@ -85,6 +86,24 @@ class SceneAuthoringTest {
         assertEquals(0, scene.getEntityCount());
         assertFalse(parent.isValid());
         assertFalse(child.isValid());
+    }
+
+    @Test
+    void reparentPreservesWorldTransform() {
+        final Scene scene = new Scene("Test");
+        final SceneAuthoring authoring = new SceneAuthoring(new AssetManager());
+
+        final Entity parent = scene.createEntity("Parent");
+        parent.getTransform().setPosition(10.0f, 2.0f, -3.0f).setRotationEuler(0.0f, (float) Math.toRadians(35.0), 0.0f);
+
+        final Entity child = scene.createEntity("Child");
+        child.getTransform().setPosition(3.0f, 4.0f, 5.0f);
+
+        final Matrix4f before = child.getWorldMatrix(new Matrix4f());
+        authoring.reparentPreserveWorld(scene, child, parent, 0);
+
+        final Matrix4f after = child.getWorldMatrix(new Matrix4f());
+        assertTrue(before.equals(after, 0.0001f));
     }
 
 }

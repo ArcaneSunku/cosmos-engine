@@ -8,6 +8,9 @@ import atomixsoft.dev.cosmos.scene.Entity;
 import atomixsoft.dev.cosmos.scene.Scene;
 import atomixsoft.dev.cosmos.scene.component.CameraComponent;
 import atomixsoft.dev.cosmos.scene.component.MeshRenderComponent;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import static atomixsoft.dev.cosmos.editor.asset.EditorAssetKeys.*;
 
@@ -18,10 +21,54 @@ public final class SceneAuthoring {
     private static final float DEFAULT_CAMERA_NEAR = 0.1f;
     private static final float DEFAULT_CAMERA_FAR = 100.0f;
 
+    private static final float MIN_INVERTIBLE_DETERMINANT = 0.000001f;
+
     private final AssetManager m_Assets;
 
     public SceneAuthoring(AssetManager assets) {
+        if(assets == null)
+            throw new IllegalArgumentException("Asset Manager cannot be null!");
+
         m_Assets = assets;
+    }
+
+    public void reparentPreserveWorld(Scene scene, Entity entity, Entity parent, int siblingIndex) {
+        validateEntity(scene, entity);
+
+        if (parent != null)
+            validateEntity(scene, parent);
+
+        if (entity.getParent() == parent) {
+            entity.setSiblingIndex(siblingIndex);
+            return;
+        }
+
+        final Matrix4f worldMatrix = entity.getWorldMatrix(new Matrix4f());
+        final Matrix4f localMatrix = new Matrix4f();
+
+        if (parent == null) {
+            localMatrix.set(worldMatrix);
+        } else {
+            final Matrix4f parentWorld = parent.getWorldMatrix(new Matrix4f());
+            final float determinant = parentWorld.determinant();
+
+            if (!Float.isFinite(determinant) || Math.abs(determinant) <= MIN_INVERTIBLE_DETERMINANT)
+                throw new IllegalStateException("Cannot preserve world Transform when reparenting under an Entity with a non-invertible world Transform!");
+
+            parentWorld.invert();
+            localMatrix.set(parentWorld).mul(worldMatrix);
+        }
+
+        final Vector3f position = new Vector3f();
+        final Quaternionf rotation = new Quaternionf();
+        final Vector3f scale = new Vector3f();
+
+        localMatrix.getTranslation(position);
+        localMatrix.getUnnormalizedRotation(rotation).normalize();
+        localMatrix.getScale(scale);
+
+        entity.setParent(parent, siblingIndex);
+        entity.getTransform().setPosition(position).setRotation(rotation).setScale(scale);
     }
 
     public Entity createEmpty(Scene scene) {
@@ -99,14 +146,19 @@ public final class SceneAuthoring {
         scene.destroyEntity(entity);
     }
 
-    private static String createUniqueName(Scene scene, String baseName) {
-        if(isNameAvailable(scene, baseName))
+    public String createUniqueName(Scene scene, String baseName) {
+        validateScene(scene);
+
+        if (baseName == null || baseName.isBlank())
+            throw new IllegalArgumentException("Base Entity name cannot be empty!");
+
+        if (isNameAvailable(scene, baseName))
             return baseName;
 
         int suffix = 2;
-        while(true) {
-            final String candidate = baseName + String.format("(%d)", suffix);
-            if(isNameAvailable(scene, candidate))
+        while (true) {
+            final String candidate = baseName + "(" + suffix + ")";
+            if (isNameAvailable(scene, candidate))
                 return candidate;
 
             suffix++;

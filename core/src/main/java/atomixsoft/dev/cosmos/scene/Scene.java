@@ -9,6 +9,9 @@ public final class Scene {
     private final Map<EntityId, Entity> m_Entities;
     private final Collection<Entity> m_EntityView;
 
+    private final List<Entity> m_RootEntities;
+    private final List<Entity> m_RootEntityView;
+
     private String m_Name;
     private EntityId m_PrimaryCameraId;
 
@@ -20,6 +23,9 @@ public final class Scene {
 
         m_Entities = new LinkedHashMap<>();
         m_EntityView = Collections.unmodifiableCollection(m_Entities.values());
+
+        m_RootEntities = new ArrayList<>();
+        m_RootEntityView = Collections.unmodifiableList(m_RootEntities);
     }
 
     void onComponentRemoved(Entity entity, Class<? extends Component> type) {
@@ -38,6 +44,8 @@ public final class Scene {
             entity.invalidate();
 
         m_PrimaryCameraId = null;
+
+        m_RootEntities.clear();
         m_Entities.clear();
     }
 
@@ -63,6 +71,7 @@ public final class Scene {
 
         final Entity entity = new Entity(this, id, name);
         m_Entities.put(id, entity);
+        m_RootEntities.add(entity);
 
         return entity;
     }
@@ -80,7 +89,7 @@ public final class Scene {
     public boolean destroyEntity(EntityId id) {
         if (id == null) throw new IllegalArgumentException("Entity ID cannot be null!");
 
-        final Entity entity = m_Entities.remove(id);
+        final Entity entity = m_Entities.get(id);
         if (entity == null) return false;
 
         destroyEntityRecursive(entity);
@@ -127,7 +136,7 @@ public final class Scene {
     }
 
     public List<Entity> getRootEntities() {
-        return m_Entities.values().stream().filter(Entity::isRoot).toList();
+        return m_RootEntityView;
     }
 
     public <T extends Component> List<Entity> getEntitiesWithComponent(Class<T> type) {
@@ -139,6 +148,10 @@ public final class Scene {
 
     public int getEntityCount() {
         return m_Entities.size();
+    }
+
+    public int getRootEntityCount() {
+        return m_RootEntities.size();
     }
 
     public String getName() {
@@ -165,14 +178,32 @@ public final class Scene {
     }
 
     private void destroyEntityRecursive(Entity entity) {
-        for(Entity child : List.copyOf(entity.getChildren()))
+        for (Entity child : List.copyOf(entity.getChildren()))
             destroyEntityRecursive(child);
 
-        if(entity.getId().equals(m_PrimaryCameraId))
+        if (entity.getId().equals(m_PrimaryCameraId))
             m_PrimaryCameraId = null;
+
+        if (entity.isRoot())
+            m_RootEntities.remove(entity);
 
         m_Entities.remove(entity.getId());
         entity.invalidate();
+    }
+
+    void removeRootEntity(Entity entity) {
+        m_RootEntities.remove(entity);
+    }
+
+    void addRootEntity(Entity entity, int index) {
+        if (index < 0 || index > m_RootEntities.size())
+            throw new IndexOutOfBoundsException("Root Entity index out of bounds: " + index);
+
+        m_RootEntities.add(index, entity);
+    }
+
+    int indexOfRootEntity(Entity entity) {
+        return m_RootEntities.indexOf(entity);
     }
 
     private static void validateName(String name) {

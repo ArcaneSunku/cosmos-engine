@@ -10,10 +10,15 @@ import atomixsoft.dev.cosmos.camera.Camera;
 import atomixsoft.dev.cosmos.camera.OrthographicCamera;
 import atomixsoft.dev.cosmos.camera.PerspectiveCamera;
 import atomixsoft.dev.cosmos.editor.camera.FreeCameraController;
+import atomixsoft.dev.cosmos.editor.render.EditorSceneOverlayRenderer;
+import atomixsoft.dev.cosmos.editor.render.ScenePickingRenderer;
+import atomixsoft.dev.cosmos.editor.selection.ScenePickRequest;
 import atomixsoft.dev.cosmos.editor.settings.EditorPaths;
 import atomixsoft.dev.cosmos.editor.settings.EditorSettings;
+import atomixsoft.dev.cosmos.editor.tool.TransformTool;
 import atomixsoft.dev.cosmos.editor.ui.EditorWorkspace;
 import atomixsoft.dev.cosmos.editor.ui.ImGuiManager;
+import atomixsoft.dev.cosmos.input.Input;
 import atomixsoft.dev.cosmos.render.*;
 import atomixsoft.dev.cosmos.scene.Entity;
 import atomixsoft.dev.cosmos.scene.Scene;
@@ -21,12 +26,14 @@ import atomixsoft.dev.cosmos.scene.component.CameraComponent;
 import atomixsoft.dev.cosmos.spatial.Transform;
 import atomixsoft.dev.cosmos.utils.WindowConfig;
 
+import imgui.ImGui;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_P;
+import static org.lwjgl.glfw.GLFW.*;
 
 import static atomixsoft.dev.cosmos.editor.asset.EditorAssetKeys.*;
 
@@ -105,8 +112,15 @@ public class Editor implements Application {
     private final Matrix4f m_SceneView;
     private final Matrix4f m_GameView;
 
+    private final Matrix4f m_FocusWorld;
+    private final Vector3f m_FocusPosition;
+    private final Vector3f m_FocusScale;
+
     private final ImGuiManager m_ImGui;
     private final EditorWorkspace m_Workspace;
+
+    private final EditorSceneOverlayRenderer m_SceneOverlays;
+    private final ScenePickingRenderer m_ScenePickingRenderer;
 
     private final Scene m_Scene;
     private final SceneRenderer m_SceneRenderer;
@@ -125,11 +139,18 @@ public class Editor implements Application {
         m_ImGui = new ImGuiManager();
         m_Workspace = new EditorWorkspace();
 
+        m_SceneOverlays = new EditorSceneOverlayRenderer();
+        m_ScenePickingRenderer = new ScenePickingRenderer();
+
         m_Scene = new Scene("Untitled Scene");
         m_SceneRenderer = new SceneRenderer();
 
         m_SceneView = new Matrix4f();
         m_GameView = new Matrix4f();
+
+        m_FocusWorld = new Matrix4f();
+        m_FocusPosition = new Vector3f();
+        m_FocusScale = new Vector3f();
     }
 
     @Override
@@ -144,22 +165,49 @@ public class Editor implements Application {
         registerAssets(assets);
 
         m_Workspace.initialize(engine.getAssets(), settings, savedLayoutExists);
+
+        m_SceneOverlays.initialize();
+        m_ScenePickingRenderer.initialize();
     }
 
     @Override
     public void update(Engine engine, double dt) {
         m_ImGui.beginFrame();
-        m_Workspace.draw(engine, m_Scene);
+        m_Workspace.draw(engine, m_Scene, m_ActiveEditorCamera, m_CamTrans);
+        handleEditorShortcuts(engine);
 
-        if(m_Workspace.isSceneViewportFocused()) {
-            if(engine.getInput().isKeyPressed(GLFW_KEY_P)) {
-                if(m_ActiveEditorCamera == m_POVCamera) m_ActiveEditorCamera = m_OrthoCamera;
+        if (m_Workspace.isSceneViewportFocused() && !m_CamControl.isCapturingMouse()) {
+            final var input = engine.getInput();
+
+            if (input.isKeyPressed(GLFW_KEY_Q))
+                m_Workspace.setTransformTool(TransformTool.NONE);
+
+            if (input.isKeyPressed(GLFW_KEY_W))
+                m_Workspace.setTransformTool(TransformTool.TRANSLATE);
+
+            if (input.isKeyPressed(GLFW_KEY_E))
+                m_Workspace.setTransformTool(TransformTool.ROTATE);
+
+            if (input.isKeyPressed(GLFW_KEY_R))
+                m_Workspace.setTransformTool(TransformTool.SCALE);
+
+            if (input.isKeyPressed(GLFW_KEY_X))
+                m_Workspace.toggleTransformSpace();
+
+            if (input.isKeyPressed(GLFW_KEY_F))
+                frameSelected();
+
+            if (input.isKeyPressed(GLFW_KEY_P)) {
+                if (m_ActiveEditorCamera == m_POVCamera) m_ActiveEditorCamera = m_OrthoCamera;
                 else m_ActiveEditorCamera = m_POVCamera;
             }
         }
 
-        final boolean sceneCameraInputActive = m_Workspace.isSceneViewportHovered() || m_CamControl.isCapturingMouse();
-        if(sceneCameraInputActive) m_CamControl.update(engine.getInput(), dt);
+        final boolean sceneCameraInputActive;
+        if (m_CamControl.isCapturingMouse()) sceneCameraInputActive = true;
+        else sceneCameraInputActive = m_Workspace.isSceneViewportHovered() && !m_Workspace.isSceneGizmoInteracting();
+
+        if (sceneCameraInputActive) m_CamControl.update(engine.getInput(), dt);
         else m_CamControl.release(engine.getInput());
     }
 
@@ -183,9 +231,17 @@ public class Editor implements Application {
                 m_Workspace.dispose();
             } finally {
                 try {
-                    m_ImGui.dispose();
+                    m_ScenePickingRenderer.dispose();
                 } finally {
-                    m_Scene.clear();
+                    try {
+                        m_SceneOverlays.dispose();
+                    } finally {
+                        try {
+                            m_ImGui.dispose();
+                        } finally {
+                            m_Scene.clear();
+                        }
+                    }
                 }
             }
         }
@@ -217,22 +273,26 @@ public class Editor implements Application {
     private void renderSceneViewport(Engine engine) {
         final Graphics graphics = engine.getGraphics();
         final Framebuffer framebuffer = m_Workspace.getSceneFramebuffer();
+
         final int previousWidth = graphics.getViewportWidth();
         final int previousHeight = graphics.getViewportHeight();
 
         try {
             framebuffer.bind();
+
             graphics.setViewport(framebuffer.getWidth(), framebuffer.getHeight());
             graphics.clear();
 
-            m_ActiveEditorCamera.resize(framebuffer.getWidth(), framebuffer.getHeight());
             m_CamTrans.getInverseMatrix(m_SceneView);
-
-            m_SceneRenderer.render(engine.getGraphics(), m_Scene, m_ActiveEditorCamera, m_SceneView);
+            m_SceneRenderer.render(graphics, m_Scene, m_ActiveEditorCamera, m_SceneView);
+            m_SceneOverlays.render(graphics, m_Scene, m_Workspace.getSelectedEntity(), m_ActiveEditorCamera, m_SceneView);
         } finally {
             Framebuffer.bindDefault();
+
             graphics.setViewport(previousWidth, previousHeight);
         }
+
+        resolveScenePick(graphics, framebuffer);
     }
 
     private void renderGameViewport(Engine engine) {
@@ -266,6 +326,75 @@ public class Editor implements Application {
             Framebuffer.bindDefault();
             graphics.setViewport(prevWidth, prevHeight);
         }
+    }
+
+    private void resolveScenePick(Graphics graphics, Framebuffer sceneFramebuffer) {
+        final ScenePickRequest request = m_Workspace.consumeScenePickRequest();
+        if (request == null)
+            return;
+
+        m_ScenePickingRenderer.render(graphics, m_Scene, m_ActiveEditorCamera, m_SceneView, sceneFramebuffer.getWidth(), sceneFramebuffer.getHeight());
+
+        final Entity picked = m_ScenePickingRenderer.pick(request.x(), request.y());
+        m_Workspace.selectEntity(picked);
+    }
+
+    private void frameSelected() {
+        final Entity selected = m_Workspace.getSelectedEntity();
+        if (selected == null)
+            return;
+
+        selected.getWorldMatrix(m_FocusWorld);
+
+        m_FocusWorld.getTranslation(m_FocusPosition);
+        m_FocusWorld.getScale(m_FocusScale);
+
+        final float extent = Math.max(Math.max(Math.abs(m_FocusScale.x), Math.abs(m_FocusScale.y)), Math.abs(m_FocusScale.z));
+        final float distance = Math.max(2.5f, extent * 4.0f);
+
+        m_CamControl.focus(m_FocusPosition, distance);
+
+        if (m_ActiveEditorCamera instanceof OrthographicCamera orthographic)
+            orthographic.setVerticalSize(Math.max(2.0f, extent * 4.0f));
+    }
+
+    private void handleEditorShortcuts(Engine engine) {
+        if (ImGui.getIO().getWantTextInput())
+            return;
+
+        if (ImGui.isAnyItemActive())
+            return;
+
+        if (m_CamControl.isCapturingMouse())
+            return;
+
+        if (m_Workspace.isSceneGizmoInteracting())
+            return;
+
+        final Input input = engine.getInput();
+        if (input.isControlDown()) {
+            if (input.isKeyPressed(GLFW_KEY_Z)) {
+                if (input.isShiftDown())
+                    m_Workspace.redo(m_Scene);
+                else
+                    m_Workspace.undo(m_Scene);
+
+                return;
+            }
+
+            if (input.isKeyPressed(GLFW_KEY_Y)) {
+                m_Workspace.redo(m_Scene);
+                return;
+            }
+
+            if (input.isKeyPressed(GLFW_KEY_D)) {
+                m_Workspace.duplicateSelected(m_Scene);
+                return;
+            }
+        }
+
+        if (input.isKeyPressed(GLFW_KEY_DELETE))
+            m_Workspace.deleteSelected(m_Scene);
     }
 
     static void main(String[] args) {

@@ -6,6 +6,7 @@ import atomixsoft.dev.cosmos.spatial.Transform;
 
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 
 import static org.lwjgl.glfw.GLFW.*;
 
@@ -61,6 +62,18 @@ public final class FreeCameraController {
 
         updateRotation(input);
         updateMovement(input, (float) deltaTime);
+    }
+
+    public void focus(Vector3fc target, float distance) {
+        if (target == null)
+            throw new IllegalArgumentException("Focus target cannot be null!");
+
+        if (!Float.isFinite(distance) || distance <= 0.0f)
+            throw new IllegalArgumentException("Focus distance must be greater than zero!");
+
+        m_Transform.getForward(m_Direction);
+        m_Direction.normalize().mul(distance);
+        m_Transform.setPosition(target.x() - m_Direction.x, target.y() - m_Direction.y, target.z() - m_Direction.z);
     }
 
     public void release(Input input) {

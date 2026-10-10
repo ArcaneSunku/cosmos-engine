@@ -2,6 +2,7 @@ package atomixsoft.dev.cosmos.editor.ui;
 
 import imgui.ImGui;
 import imgui.ImGuiIO;
+import imgui.extension.imguizmo.ImGuizmo;
 import imgui.flag.ImGuiConfigFlags;
 import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
@@ -104,6 +105,7 @@ public final class ImGuiManager {
         m_Glfw.newFrame();
 
         ImGui.newFrame();
+        ImGuizmo.beginFrame();
 
         m_FrameStarted = true;
     }

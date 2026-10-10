@@ -44,7 +44,7 @@ public final class Entity {
         m_Valid = true;
     }
 
-    public void invalidate() {
+    void invalidate() {
         if(!m_Valid) return;
 
         if(m_Parent != null) {
@@ -92,35 +92,41 @@ public final class Entity {
     }
 
     public Entity setParent(Entity parent) {
-        validate();
-        if(parent == this)
-            throw new IllegalArgumentException("Entity cannot be its own parent");
-
-        if(parent != null) {
-            parent.validate();
-            if(parent.m_Scene != m_Scene)
-                throw new IllegalArgumentException("Entities must belong to the same Scene!");
-
-            Entity ancestor = parent;
-            while(ancestor != null) {
-                if(ancestor == this)
-                    throw new IllegalArgumentException("Entity hierarchy cannot contain a cycle!");
-
-                ancestor = ancestor.m_Parent;
-            }
-        }
-
-        if(m_Parent == parent)
+        validateParent(parent);
+        if (m_Parent == parent)
             return this;
 
-        if(m_Parent != null)
-            m_Parent.m_Children.remove(this);
+        final int siblingIndex = getTargetSiblingCount(parent);
+        return setParent(parent, siblingIndex);
+    }
 
+    public Entity setParent(Entity parent, int siblingIndex) {
+        validate();
+        validateParent(parent);
+
+        final int targetSiblingCount = getTargetSiblingCount(parent);
+        if (siblingIndex < 0 || siblingIndex > targetSiblingCount)
+            throw new IndexOutOfBoundsException("Sibling index out of bounds: " + siblingIndex);
+
+        if (m_Parent == parent && getSiblingIndex() == siblingIndex)
+            return this;
+
+        detachFromHierarchy();
         m_Parent = parent;
-        if(m_Parent != null)
-            m_Parent.m_Children.add(this);
+
+        if (m_Parent == null)
+            m_Scene.addRootEntity(this, siblingIndex);
+        else
+            m_Parent.m_Children.add(siblingIndex, this);
 
         return this;
+    }
+
+    public Entity setSiblingIndex(int siblingIndex) {
+
+        validate();
+
+        return setParent(m_Parent, siblingIndex);
     }
 
     public Entity setName(String name) {
@@ -155,6 +161,24 @@ public final class Entity {
     public int getChildCount() {
         validate();
         return m_Children.size();
+    }
+
+    public int getSiblingIndex() {
+        validate();
+
+        if (m_Parent != null) {
+            final int index = m_Parent.m_Children.indexOf(this);
+
+            if (index < 0) throw new IllegalStateException("Entity is missing from its parent's child list!");
+
+            return index;
+        }
+
+        final int index = m_Scene.indexOfRootEntity(this);
+
+        if (index < 0) throw new IllegalStateException("Root Entity is missing from the Scene root list!");
+
+        return index;
     }
 
     public boolean isRoot() {
@@ -205,6 +229,48 @@ public final class Entity {
 
     public Matrix4f getInverseWorldMatrix(Matrix4f destination) {
         return getWorldMatrix(destination).invert();
+    }
+
+    private void validateParent(Entity parent) {
+        validate();
+
+        if (parent == this)
+            throw new IllegalArgumentException("Entity cannot be its own parent!");
+
+        if (parent == null)
+            return;
+
+        parent.validate();
+
+        if (parent.m_Scene != m_Scene)
+            throw new IllegalArgumentException("Entities must belong to the same Scene!");
+
+        Entity ancestor = parent;
+        while (ancestor != null) {
+            if (ancestor == this)
+                throw new IllegalArgumentException("Entity hierarchy cannot contain a cycle!");
+
+            ancestor = ancestor.m_Parent;
+        }
+    }
+
+    private int getTargetSiblingCount(Entity parent) {
+        int count = parent == null ? m_Scene.getRootEntityCount() : parent.m_Children.size();
+
+        if (m_Parent == parent)
+            count--;
+
+        return count;
+    }
+
+    private void detachFromHierarchy() {
+        if (m_Parent == null) {
+            m_Scene.removeRootEntity(this);
+            return;
+        }
+
+        m_Parent.m_Children.remove(this);
+        m_Parent = null;
     }
 
     private static void validateName(String name) {
