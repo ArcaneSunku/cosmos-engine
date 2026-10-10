@@ -13,7 +13,6 @@ public final class EditorAssetKeys {
     public static final AssetKey<Texture2D> CHECKER_TEXTURE = AssetKey.of(Texture2D.class, "editor/textures/checkers");
 
     public static final AssetKey<Material> DEFAULT_MATERIAL = AssetKey.of(Material.class, "editor/materials/default");
-    public static final AssetKey<Material> ACCENT_MATERIAL = AssetKey.of(Material.class, "editor/materials/accent");
 
     private EditorAssetKeys() {
 

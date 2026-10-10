@@ -10,19 +10,22 @@ import atomixsoft.dev.cosmos.camera.Camera;
 import atomixsoft.dev.cosmos.camera.OrthographicCamera;
 import atomixsoft.dev.cosmos.camera.PerspectiveCamera;
 import atomixsoft.dev.cosmos.editor.camera.FreeCameraController;
+import atomixsoft.dev.cosmos.editor.settings.EditorPaths;
+import atomixsoft.dev.cosmos.editor.settings.EditorSettings;
 import atomixsoft.dev.cosmos.editor.ui.EditorWorkspace;
 import atomixsoft.dev.cosmos.editor.ui.ImGuiManager;
 import atomixsoft.dev.cosmos.render.*;
 import atomixsoft.dev.cosmos.scene.Entity;
 import atomixsoft.dev.cosmos.scene.Scene;
 import atomixsoft.dev.cosmos.scene.component.CameraComponent;
-import atomixsoft.dev.cosmos.scene.component.MeshRenderComponent;
 import atomixsoft.dev.cosmos.spatial.Transform;
 import atomixsoft.dev.cosmos.utils.WindowConfig;
 
 import org.joml.Matrix4f;
 
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_C;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_P;
 
 import static atomixsoft.dev.cosmos.editor.asset.EditorAssetKeys.*;
@@ -89,18 +92,18 @@ public class Editor implements Application {
             22, 23, 20
     };
 
-    private static final String VERTEX_PATH = "/shaders/basic.vert";
+    private static final String VERTEX_PATH   = "/shaders/basic.vert";
     private static final String FRAGMENT_PATH = "/shaders/basic.frag";
-    private static final String CHECKER_TEXTURE_PATH = "textures/checkers.png";
+    private static final String CHECKER_TEXTURE_PATH  = "textures/checkers.png";
     private static final String DEFAULT_MATERIAL_PATH = "materials/default.material";
-    private static final String ACCENT_MATERIAL_PATH = "materials/accent.material";
 
     private final PerspectiveCamera m_POVCamera;
     private final OrthographicCamera m_OrthoCamera;
     private final FreeCameraController m_CamControl;
 
     private final Transform m_CamTrans;
-    private final Matrix4f m_View;
+    private final Matrix4f m_SceneView;
+    private final Matrix4f m_GameView;
 
     private final ImGuiManager m_ImGui;
     private final EditorWorkspace m_Workspace;
@@ -109,7 +112,6 @@ public class Editor implements Application {
     private final SceneRenderer m_SceneRenderer;
 
     private Camera m_ActiveEditorCamera;
-    private boolean m_UseSceneCamera;
 
     private Editor() {
         m_POVCamera = new PerspectiveCamera((float) Math.toRadians(60.0), 16.0f / 9.0f, 0.1f, 100.0f);
@@ -125,19 +127,23 @@ public class Editor implements Application {
 
         m_Scene = new Scene("Untitled Scene");
         m_SceneRenderer = new SceneRenderer();
-        m_UseSceneCamera = false;
 
-        m_View = new Matrix4f();
+        m_SceneView = new Matrix4f();
+        m_GameView = new Matrix4f();
     }
 
     @Override
     public void initialize(Engine engine) {
-        m_ImGui.initialize();
+        final Path workspacePath = EditorPaths.getImGuiPath();
+        final boolean savedLayoutExists = Files.isRegularFile(workspacePath);
+        final EditorSettings settings = EditorSettings.load(EditorPaths.getSettingsPath());
+
+        m_ImGui.initialize(workspacePath);
 
         final AssetManager assets = engine.getAssets();
         registerAssets(assets);
 
-        m_Workspace.initialize(engine.getAssets());
+        m_Workspace.initialize(engine.getAssets(), settings, savedLayoutExists);
     }
 
     @Override
@@ -145,27 +151,14 @@ public class Editor implements Application {
         m_ImGui.beginFrame();
         m_Workspace.draw(engine, m_Scene);
 
-        if(m_UseSceneCamera && !m_Scene.hasPrimaryCamera())
-            m_UseSceneCamera = false;
-
         if(m_Workspace.isSceneViewportFocused()) {
-            if (!m_UseSceneCamera && engine.getInput().isKeyPressed(GLFW_KEY_P)) {
-                if (m_ActiveEditorCamera == m_POVCamera) m_ActiveEditorCamera = m_OrthoCamera;
+            if(engine.getInput().isKeyPressed(GLFW_KEY_P)) {
+                if(m_ActiveEditorCamera == m_POVCamera) m_ActiveEditorCamera = m_OrthoCamera;
                 else m_ActiveEditorCamera = m_POVCamera;
-            }
-
-            if(engine.getInput().isKeyPressed(GLFW_KEY_C)) {
-                if(m_UseSceneCamera) {
-                    m_UseSceneCamera = false;
-                } else if(m_Scene.hasPrimaryCamera()) {
-                    m_UseSceneCamera = true;
-                    m_CamControl.release(engine.getInput());
-                }
             }
         }
 
-        final boolean sceneCameraInputActive = !m_UseSceneCamera && (m_Workspace.isSceneViewportHovered() || m_CamControl.isCapturingMouse());
-
+        final boolean sceneCameraInputActive = m_Workspace.isSceneViewportHovered() || m_CamControl.isCapturingMouse();
         if(sceneCameraInputActive) m_CamControl.update(engine.getInput(), dt);
         else m_CamControl.release(engine.getInput());
     }
@@ -174,6 +167,9 @@ public class Editor implements Application {
     public void render(Engine engine, double alpha) {
         if(m_Workspace.isSceneViewportVisible())
             renderSceneViewport(engine);
+
+        if(m_Workspace.isGameViewportVisible() && m_Scene.hasPrimaryCamera())
+            renderGameViewport(engine);
 
         m_ImGui.render();
     }
@@ -207,7 +203,6 @@ public class Editor implements Application {
         catalog.register(BASIC_SHADER, editorAssets, new ShaderAssetLoader(VERTEX_PATH, FRAGMENT_PATH));
         catalog.register(CHECKER_TEXTURE, editorAssets, new TextureAssetLoader(CHECKER_TEXTURE_PATH));
         catalog.register(DEFAULT_MATERIAL, editorAssets, new MaterialAssetLoader(DEFAULT_MATERIAL_PATH));
-        catalog.register(ACCENT_MATERIAL, editorAssets, new MaterialAssetLoader(ACCENT_MATERIAL_PATH));
 
         final BufferLayout cubeLayout = new BufferLayout().addFloat(3).addFloat(3).addFloat(2);
         catalog.registerGenerated(CUBE_MESH, manager -> {
@@ -230,38 +225,47 @@ public class Editor implements Application {
             graphics.setViewport(framebuffer.getWidth(), framebuffer.getHeight());
             graphics.clear();
 
-            final Camera renderCamera = getRenderCamera();
-            renderCamera.resize(framebuffer.getWidth(), framebuffer.getHeight());
-            updateViewMatrix();
+            m_ActiveEditorCamera.resize(framebuffer.getWidth(), framebuffer.getHeight());
+            m_CamTrans.getInverseMatrix(m_SceneView);
 
-            m_SceneRenderer.render(engine.getGraphics(), m_Scene, renderCamera, m_View);
+            m_SceneRenderer.render(engine.getGraphics(), m_Scene, m_ActiveEditorCamera, m_SceneView);
         } finally {
             Framebuffer.bindDefault();
             graphics.setViewport(previousWidth, previousHeight);
         }
     }
 
-    private void updateViewMatrix() {
-        if(m_UseSceneCamera) {
-            final Entity cameraEntity = m_Scene.getPrimaryCameraEntity();
-            if(cameraEntity != null) {
-                cameraEntity.getInverseWorldMatrix(m_View);
-                return;
-            }
-        }
+    private void renderGameViewport(Engine engine) {
+        if(!m_Scene.hasPrimaryCamera())
+            return;
 
-        m_CamTrans.getInverseMatrix(m_View);
-    }
+        final Entity cameraEntity = m_Scene.getPrimaryCameraEntity();
+        final CameraComponent component = cameraEntity.getComponent(CameraComponent.class);
 
-    private Camera getRenderCamera() {
-        if(!m_UseSceneCamera)
-            return m_ActiveEditorCamera;
-
-        final CameraComponent component = m_Scene.getPrimaryCameraComponent();
         if(component == null)
-            return m_ActiveEditorCamera;
+            return;
 
-        return component.getCamera();
+        final Camera camera = component.getCamera();
+        final Graphics graphics = engine.getGraphics();
+        final Framebuffer framebuffer = m_Workspace.getGameFramebuffer();
+
+        final int prevWidth = graphics.getViewportWidth();
+        final int prevHeight = graphics.getViewportHeight();
+
+        try {
+            framebuffer.bind();
+
+            graphics.setViewport(framebuffer.getWidth(), framebuffer.getHeight());
+            graphics.clear();
+
+            camera.resize(framebuffer.getWidth(), framebuffer.getHeight());
+            cameraEntity.getInverseWorldMatrix(m_GameView);
+
+            m_SceneRenderer.render(graphics, m_Scene, camera, m_GameView);
+        } finally {
+            Framebuffer.bindDefault();
+            graphics.setViewport(prevWidth, prevHeight);
+        }
     }
 
     static void main(String[] args) {

@@ -6,6 +6,10 @@ import imgui.flag.ImGuiConfigFlags;
 import imgui.gl3.ImGuiImplGl3;
 import imgui.glfw.ImGuiImplGlfw;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import static org.lwjgl.glfw.GLFW.glfwGetCurrentContext;
 import static org.lwjgl.system.MemoryUtil.NULL;
 
@@ -13,6 +17,8 @@ public final class ImGuiManager {
 
     private final ImGuiImplGlfw m_Glfw;
     private final ImGuiImplGl3 m_Gl3;
+
+    private Path m_IniPath;
 
     private boolean m_ContextCreated;
     private boolean m_GlfwInitialized;
@@ -23,8 +29,9 @@ public final class ImGuiManager {
 
     public ImGuiManager() {
         m_Glfw = new ImGuiImplGlfw();
-
         m_Gl3 = new ImGuiImplGl3();
+
+        m_IniPath = null;
 
         m_ContextCreated = false;
         m_GlfwInitialized = false;
@@ -34,9 +41,22 @@ public final class ImGuiManager {
         m_Initialized = false;
     }
 
-    public void initialize() {
+    public void initialize(Path iniPath) {
         if (m_Initialized)
             return;
+
+        if(iniPath == null)
+            throw new IllegalArgumentException("ImGui INI path cannot be null!");
+
+        m_IniPath = iniPath.toAbsolutePath().normalize();
+        final Path parent = m_IniPath.getParent();
+
+        try {
+            if (parent != null) Files.createDirectories(parent);
+        } catch (IOException exception) {
+            m_IniPath = null;
+            throw new IllegalStateException("Failed to create ImGui configuration directory!", exception);
+        }
 
         final long window = glfwGetCurrentContext();
         if (window == NULL)
@@ -50,7 +70,7 @@ public final class ImGuiManager {
 
             io.addConfigFlags(ImGuiConfigFlags.DockingEnable);
             io.addConfigFlags(ImGuiConfigFlags.NavEnableKeyboard);
-            io.setIniFilename(null);
+            io.setIniFilename(m_IniPath.toString());
 
             ImGui.styleColorsDark();
 
@@ -122,6 +142,9 @@ public final class ImGuiManager {
             m_FrameStarted = false;
         }
 
+        if(m_ContextCreated && m_IniPath != null)
+            failure = captureFailure(failure, () -> ImGui.saveIniSettingsToDisk(m_IniPath.toString()));
+
         if (m_Gl3Initialized) {
             failure = captureFailure(failure, m_Gl3::shutdown);
             m_Gl3Initialized = false;
@@ -137,7 +160,9 @@ public final class ImGuiManager {
             m_ContextCreated = false;
         }
 
+        m_IniPath = null;
         m_Initialized = false;
+
         if (failure == null)
             return;
 

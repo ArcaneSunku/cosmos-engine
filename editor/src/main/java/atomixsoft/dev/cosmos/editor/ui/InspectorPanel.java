@@ -254,12 +254,12 @@ public final class InspectorPanel {
 
         final Camera camera = component.getCamera();
         if (camera instanceof PerspectiveCamera perspective) {
-            drawPerspectiveCamera(perspective);
+            drawPerspectiveCamera(perspective, primary);
             return;
         }
 
         if (camera instanceof OrthographicCamera orthographic) {
-            drawOrthographicCamera(orthographic);
+            drawOrthographicCamera(orthographic, primary);
             return;
         }
 
@@ -270,7 +270,7 @@ public final class InspectorPanel {
             authoring.removeCameraComponent(scene, entity);
     }
 
-    private void drawPerspectiveCamera(PerspectiveCamera camera) {
+    private void drawPerspectiveCamera(PerspectiveCamera camera, boolean isPrimary) {
         ImGui.textDisabled("Projection: Perspective");
         m_ScalarValue[0] = (float) Math.toDegrees(camera.getFOV());
 
@@ -287,10 +287,13 @@ public final class InspectorPanel {
             camera.setClipPlanes(near, far);
         }
 
-        ImGui.textDisabled("Aspect Ratio: %.3f (Viewport)".formatted(camera.getAspectRatio()));
+        if(isPrimary)
+            ImGui.textDisabled("Aspect Ratio: %.3f (Game View)".formatted(camera.getAspectRatio()));
+        else
+            ImGui.textDisabled("Aspect Ratio: %.3f".formatted(camera.getAspectRatio()));
     }
 
-    private void drawOrthographicCamera(OrthographicCamera camera) {
+    private void drawOrthographicCamera(OrthographicCamera camera, boolean isPrimary) {
         ImGui.textDisabled("Projection: Orthographic");
         m_ScalarValue[0] = camera.getVerticalSize();
 
@@ -307,7 +310,10 @@ public final class InspectorPanel {
             camera.setClipPlanes(near, far);
         }
 
-        ImGui.textDisabled("Aspect Ratio: %.3f (Viewport)".formatted(camera.getAspectRatio()));
+        if(isPrimary)
+            ImGui.textDisabled("Aspect Ratio: %.3f (Game View)".formatted(camera.getAspectRatio()));
+        else
+            ImGui.textDisabled("Aspect Ratio: %.3f".formatted(camera.getAspectRatio()));
     }
 
     private void drawMeshRenderer(AssetManager assets, MeshRenderComponent renderer) {
