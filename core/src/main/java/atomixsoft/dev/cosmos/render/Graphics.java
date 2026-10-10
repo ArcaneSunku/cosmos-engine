@@ -66,6 +66,23 @@ public class Graphics {
         }
     }
 
+    public void drawLines(VertexArray vao, int vertexCount) {
+        validate();
+        if (vao == null)
+            throw new IllegalArgumentException("Vertex Array cannot be null!");
+
+        if (vertexCount <= 0)
+            throw new IllegalArgumentException("Vertex Count must be greater than zero!");
+
+        vao.bind();
+
+        try {
+            glDrawArrays(GL_LINES, 0, vertexCount);
+        } finally {
+            vao.unbind();
+        }
+    }
+
     public void drawIndexed(VertexArray vao, IndexBuffer indexBuffer) {
         validate();
 
